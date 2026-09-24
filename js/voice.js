@@ -130,8 +130,8 @@ export function createVoice({
         synth.speak(u);
       } catch (e) { /* 무시 */ }
     },
-    /** 읽기. 실제로 읽거나 줄 세웠으면 true */
-    say(text, { prio = 'normal' } = {}) {
+    /** 읽기. 실제로 읽거나 줄 세웠으면 true. wait: 읽는 중인 문장을 끊지 않고 뒤에 한 자리로 줄 선다 */
+    say(text, { prio = 'normal', wait = false } = {}) {
       if (!supported || !enabled || !voice || !text) return false;
       const item = { text: String(text), prio, at: Date.now() };
       if (prio === 'low') {
@@ -139,7 +139,7 @@ export function createVoice({
         speakNow(item);
         return true;
       }
-      if (prio !== 'high' && cur && cur.prio === 'high') { queued = item; return true; }
+      if (prio !== 'high' && cur && (cur.prio === 'high' || wait)) { queued = item; return true; }
       queued = null;
       speakNow(item);
       return true;

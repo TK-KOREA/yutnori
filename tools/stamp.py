@@ -4,7 +4,7 @@ import hashlib, pathlib, re
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PATTERNS = ['index.html', 'manifest.webmanifest', 'css/*.css', 'js/*.js',
-            'vendor/three/*.js', 'vendor/three/addons/utils/*.js', 'icons/*.png', 'icons/*.svg']
+            'vendor/three/*.js', 'vendor/three/addons/utils/*.js', 'icons/*.png', 'icons/*.svg', 'fonts/*.woff2']
 
 files = sorted({p for pat in PATTERNS for p in ROOT.glob(pat)})
 h = hashlib.sha256()

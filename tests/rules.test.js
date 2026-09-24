@@ -1,7 +1,7 @@
 import { test, eq, ok } from './harness.js';
 import {
   FIN, HOME, DONE, BACKDO, nextNode, computeMove, distToFin, optionsFor, applyMove,
-  newTeams, throwOdds, rollYut, flatsFor, resultFromFlats, rngNext,
+  newTeams, throwOdds, rollYut, flatsFor, resultFromFlats, rngNext, josa,
 } from '../js/rules.js';
 
 const PASS = { backdo: true, finish: 'pass', backdoEmpty: 'void', odds: 'real', nak: false };
@@ -159,4 +159,13 @@ test('던지기 분포가 확률표와 비슷하다', () => {
   for (let i = 0; i < n; i++) { const r = rollYut(st).r; c[r] = (c[r] || 0) + 1; }
   const o = throwOdds(PASS);
   for (const k of Object.keys(o)) ok(Math.abs((c[k] || 0) / n - o[k]) < 0.015, `${k}: ${(c[k] || 0) / n} vs ${o[k]}`);
+});
+
+test('조사: 받침·숫자·영문 끝', () => {
+  eq(josa('호랑이팀', '이', '가'), '호랑이팀이');
+  eq(josa('엄마', '이', '가'), '엄마가');
+  eq(josa('팀1', '이', '가'), '팀1이');
+  eq(josa('엄마2', '이', '가'), '엄마2가');
+  eq(josa('Tim', '이', '가'), 'Tim이');
+  eq(josa('Anna', '이', '가'), 'Anna가');
 });

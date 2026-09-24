@@ -20,7 +20,7 @@ export const INK = '#2B2118';
 export const SPECIES = [
   { id: 'horse', animal: '말', name: '모모', yut: '모', zodiac: '오', intro: '다섯 칸을 달리는 병오년 말', cry: '히힝' },
   { id: 'tiger', animal: '호랑이', name: '어흥이', yut: null, zodiac: '인', intro: '민화 속 까치호랑이', cry: '어흥' },
-  { id: 'rabbit', animal: '토끼', name: '옥토', yut: null, zodiac: '묘', intro: '달나라에서 온 깡총 토끼', cry: '뿅' },
+  { id: 'rabbit', animal: '토끼', name: '옥토', yut: null, zodiac: '묘', intro: '달나라에서 온 깡충깡충 토끼', cry: '뿅' },
   { id: 'pig', animal: '돼지', name: '도야', yut: '도', zodiac: '해', intro: "윷놀이 '도'의 주인공", cry: '꿀꿀' },
   { id: 'dog', animal: '개', name: '복실이', yut: '개', zodiac: '술', intro: '우리 토종 삽살개', cry: '멍멍' },
   { id: 'sheep', animal: '양', name: '몽실이', yut: '걸', zodiac: '미', intro: '몽실몽실 구름 양', cry: '매애' },

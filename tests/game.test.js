@@ -61,7 +61,7 @@ test('컴퓨터끼리 잔치판 한 판이 끝나고 모든 팀이 서로 다른
     const { G, awards } = await runCpuGame(1000 + s, st);
     eq(G.phase, 'over');
     eq(awards.length, 4);
-    const ids = awards.map(a => a.award.id).filter(id => id !== 'best');
+    const ids = awards.map(a => a.award.id);
     eq(new Set(ids).size, ids.length, 'awards distinct');
     ok(G.teams.some(t => t.pieces.every(q => q.pos === DONE)), 'someone finished');
   }
@@ -234,4 +234,15 @@ test('2팀 경기의 꼴찌는 대역전상을 받지 않는다', () => {
   G.stats[1].lastTurns = 10;
   const a = computeAwards(G);
   ok(a[1].award.id !== 'comeback');
+});
+
+test('시상: 1등 기록이 없는 두 팀도 서로 다른 상을 받는다', () => {
+  const G = newGameState(settings({ teams: [
+    { name: 'A', species: 'tiger', color: 0, cpu: true }, { name: 'B', species: 'rabbit', color: 1, cpu: true }, { name: 'C', species: 'pig', color: 2, cpu: true },
+  ] }), 3);
+  G.teams[0].rank = 1; G.ranks = [0]; G.phase = 'over';
+  G.stats[0].caught = 1; G.stats[0].res[5] = 1;
+  G.stats[1].res[2] = 3; G.stats[2].res[3] = 2;
+  const ids = computeAwards(G).map(a => a.award.id);
+  eq(new Set(ids).size, 3, ids.join(','));
 });

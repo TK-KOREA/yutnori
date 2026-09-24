@@ -14,9 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="윷놀이">
 <meta property="og:title" content="윷놀이 한마당">
 <meta property="og:description" content="아이와 가족이 함께하는 3D 윷놀이">
-<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Jua&family=Gowun+Dodum&display=swap" rel="stylesheet" crossorigin>
+<link rel="preload" href="fonts/jua.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/app.css">
 <script type="importmap">{"imports":{"three":"./vendor/three/three.module.min.js","three/addons/":"./vendor/three/addons/"}}</script>
 </head>
@@ -76,6 +74,7 @@
         <button class="preset" data-preset="classic"><span class="pic">🎋</span><b>전통 윷놀이</b><span>옛날 규칙 그대로</span></button>
         <button class="preset" data-preset="real"><span class="pic">🪵</span><b>진짜 윷으로</b><span>윷은 직접 던지고 결과만 눌러요</span></button>
       </div>
+      <p class="note inGameNote" id="inGameNote" hidden>팀 수·동물·말 개수·잔치 칸·규칙은 "새 경기 시작!"을 눌러야 바뀌어요. 사람/컴퓨터와 말 빠르기는 바로 바뀌어요.</p>
     </div>
     <div class="field">
       <div class="rrow"><span class="flabel">몇 팀?</span><div class="seg" data-key="teamCount" role="group" aria-label="팀 수"><button data-v="2">2팀</button><button data-v="3">3팀</button><button data-v="4">4팀</button></div></div>
@@ -122,6 +121,7 @@
         <li>‘빽’ 표시가 있는 윷가락 하나만 평평한 면이면 빽도, 한 칸 뒤로 가요.</li>
         <li>윷이나 모가 나오거나 상대 말을 잡으면 한 번 더 던져요.</li>
         <li>모·뒷모·방에 딱 멈추면 다음엔 지름길로 가요.</li>
+        <li>오른쪽 아래 ‘출발’ 칸을 ‘참먹이’라고도 해요. 한 바퀴 돌아 참먹이를 지나면 완주예요.</li>
         <li>우리 팀 말끼리 만나면 업고 같이 움직여요. 업힌 말이 잡히면 다 같이 집으로 가요.</li>
         <li>말을 모두 먼저 들여보내는 팀이 이겨요.</li>
         <li>잔치 칸: 🎁 선물 상자, 🎴 가족 미션, 🚪 도깨비 문(방으로 순간이동), 🐦 까치 소식(한 번 더), 💧 웅덩이(한 칸 뒤로), 🤝 친구 부르기. 딱 멈췄을 때만 터지고, 한 번 터지면 한 바퀴 쉬어요.</li>

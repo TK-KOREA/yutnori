@@ -2,7 +2,7 @@
   "name": "윷놀이 한마당",
   "short_name": "윷놀이",
   "description": "아이와 가족이 함께하는 3D 윷놀이",
-  "id": "./",
+  "id": "/yutnori/",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

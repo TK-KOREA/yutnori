@@ -565,3 +565,16 @@ test('unlock은 소리 없는 문장을 한 번만 읽고 onSpeaking을 부르�
   eq(s.spoken[0].volume, 0);
   eq(log, []);
 });
+
+test('wait로 읽으면 말하는 중인 문장을 끊지 않고 뒤에 줄 선다', async () => {
+  const s = fakeSynth();
+  const v = createVoice({ synth: s, Utterance: FakeUtterance });
+  await v.ready;
+  const before = s.cancels;
+  v.say('업었다! 두동무니');
+  v.say('모모팀 차례!', { wait: true });
+  eq(s.current.text, '업었다! 두동무니');
+  s.end();
+  eq(s.current.text, '모모팀 차례!');
+  eq(s.cancels - before <= 1, true, '끊지 않음');
+});

@@ -247,6 +247,7 @@ export function createScene(stage, opts = {}) {
   function isShown(o) { while (o) { if (o.visible === false) return false; o = o.parent; } return true; }
 
   canvas.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;   // 오른쪽·가운데 버튼은 무시(터치·펜은 그대로)
     poke();
     ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
     try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* 무시 */ }
@@ -271,8 +272,9 @@ export function createScene(stage, opts = {}) {
     }
     if (!drag) return;
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    const wasStill = drag.moved <= 8;
     drag.moved = Math.max(drag.moved, Math.hypot(dx, dy));
-    if (drag.flick) return;
+    if (drag.flick) { if (wasStill) drag.t = performance.now(); return; }  // 손가락을 올려 두고 겨눈 시간은 세지 않는다
     if (drag.moved > 8) {
       cam.theta = drag.th - dx * 0.006;
       cam.phi = Math.min(1.15, Math.max(0.15, drag.ph - dy * 0.005));
@@ -285,7 +287,7 @@ export function createScene(stage, opts = {}) {
     if (drag && ptrs.size === 0) {
       const dy = e.clientY - drag.y, dt = performance.now() - drag.t;
       if (drag.flick) {
-        if (dy < -30 && dt < 1000) onFlick && onFlick(Math.min(1, -dy / 260));
+        if (dy < -30) onFlick && onFlick(dt < 1000 ? Math.min(1, -dy / 260) : 0.3);
         else if (drag.moved <= 8) onFlick && onFlick(0.5);
       } else if (drag.moved <= 8) {
         const d = pickAt(e.clientX, e.clientY);
@@ -297,6 +299,7 @@ export function createScene(stage, opts = {}) {
     invalidate();
   }
   canvas.addEventListener('pointerup', endPointer);
+  canvas.addEventListener('contextmenu', e => e.preventDefault());   // 판 위에서는 브라우저 메뉴를 띄우지 않는다
   canvas.addEventListener('pointercancel', e => { ptrs.delete(e.pointerId); if (!ptrs.size) { drag = null; pinch = null; gesture = false; } });
   canvas.addEventListener('wheel', e => {
     e.preventDefault();

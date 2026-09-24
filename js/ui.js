@@ -1,17 +1,12 @@
 // DOM 화면: 차례 바, 팀 현황, 결과 토큰, 선택지 줄, 진짜 윷 입력, 배너, 알림, 미션 카드, 시상식, 설정.
 import { TEAM_COLORS, SPECIES, speciesById, RESULT_SPECIES } from './theme.js';
-import { RESULT_NAME, STEP_WORD, BACKDO, HOME, DONE, FIN, CORNER, optionsFor } from './rules.js';
+import { RESULT_NAME, STEP_WORD, BACKDO, HOME, DONE, FIN, CORNER, optionsFor, josa } from './rules.js';
 import { TILES } from './party.js';
 
 const $ = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 export const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-/** 받침 있으면 a, 없으면 b (이/가, 은/는, 을/를) */
-export function josa(w, a, b) {
-  const c = String(w).charCodeAt(String(w).length - 1);
-  const has = c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 !== 0;
-  return w + (has ? a : b);
-}
+export { josa };
 
 /** 팀 모양 SVG (채움/테두리/완주) */
 export function shapeSVG(shape, mode, color, size = 14) {
@@ -33,7 +28,7 @@ const resultImg = (r, color, portrait) => `<span class="rimg${r === BACKDO ? ' b
 /** 도착 칸 이름(아이도 알 수 있게) */
 export function destName(dest) {
   if (dest === FIN) return '완주!';
-  if (dest in CORNER) return dest === 0 ? '참먹이' : CORNER[dest];
+  if (dest in CORNER) return dest === 0 ? '출발(참먹이)' : CORNER[dest];
   return null;
 }
 
@@ -70,6 +65,8 @@ export function createUI(h) {
     // 윷가락이 날아가는 동안에는 결과를 미리 보여 주지 않는다
     const a = api.anim, flying = !!(a && a.kind === 'throw'), ph = flying ? 'throw' : G.phase;
     const results = flying ? G.results.slice(0, a.shown) : G.results;
+    const again = results.length > 0 || !!G.bonus;          // 윷·모·잡기·잔치 칸으로 한 번 더 던지는 중
+    const going = !!((a && a.kind === 'move') || G.moving);  // 말이 가는 중(잡기·업기 배너, 잔치 칸 효과까지)
     const root = document.documentElement.style;
     root.setProperty('--cur', `var(--t${tm.color})`);
     root.setProperty('--curInk', TEAM_COLORS[tm.color].ink);
@@ -88,7 +85,7 @@ export function createUI(h) {
       root.setProperty('--curInk', TEAM_COLORS[w.color].ink);
     } else {
       hud.name.innerHTML = `<span class="nm">${esc(tm.name)}</span><span class="sf">&nbsp;차례</span>`;
-      hud.sub.textContent = tm.cpu ? '컴퓨터가 하고 있어요' : flying ? '윷이 날아가요…' : (ph === 'throw' ? (results.length ? '한 번 더 던져요!' : '윷을 던져요') : ph === 'event' ? '미션!' : '말을 골라요');
+      hud.sub.textContent = tm.cpu ? '컴퓨터가 하고 있어요' : flying ? '윷이 날아가요…' : (ph === 'throw' ? (again ? '한 번 더 던져요!' : '윷을 던져요') : ph === 'event' ? '미션!' : going ? '콩콩 가는 중…' : '말을 골라요');
     }
     G.teams.forEach((x, i) => {
       const c = document.getElementById('tc' + i);
@@ -112,7 +109,8 @@ export function createUI(h) {
       if (G.phase === 'move' && !usable) b.classList.add('dead');
       b.disabled = !(canAct && usable && G.phase === 'move');
       b.innerHTML = `${resultImg(r, tm.color, portrait)}<b>${RESULT_NAME[r]}</b><span class="dots">${dotsFor(r)}</span>`;
-      b.setAttribute('aria-label', `${RESULT_NAME[r]}, ${STEP_WORD[r]}${i === G.selected && G.phase === 'move' ? ', 고름' : ''}`);
+      b.setAttribute('aria-label', `${RESULT_NAME[r]}, ${STEP_WORD[r]}`);
+      b.setAttribute('aria-pressed', String(G.phase === 'move' && i === G.selected));
       b.addEventListener('click', () => h.select(i));
       tokens.appendChild(b);
     });
@@ -126,7 +124,7 @@ export function createUI(h) {
     tb.hidden = (real && human) || (human && !over && ph === 'move');
     const tbOn = canAct && G.phase === 'throw' && !real;
     tb.setAttribute('aria-disabled', String(!tbOn));
-    tb.querySelector('.tlabel').textContent = over ? '경기 끝' : !human ? '컴퓨터 차례' : flying ? '윷이 날아가요…' : ph === 'throw' ? (results.length ? '한 번 더 던지기!' : '윷 던지기!') : '말을 골라요';
+    tb.querySelector('.tlabel').textContent = over ? '경기 끝' : !human ? '컴퓨터 차례' : flying ? '윷이 날아가요…' : ph === 'throw' ? (again ? '한 번 더 던지기!' : '윷 던지기!') : '말을 골라요';
     tb.classList.toggle('nudge', tbOn);
     $('.actions').classList.toggle('solo', tb.hidden);
     panel.classList.toggle('moving', ph === 'move' && human && !over);
@@ -137,9 +135,10 @@ export function createUI(h) {
       if (over) m = '경기가 끝났어요';
       else if (!human) m = `${josa(tm.name, '이', '가')} ${ph === 'throw' ? '윷을 던져요' : '생각하고 있어요'}…`;
       else if (flying) m = '윷이 날아가요…';
-      else if (ph === 'throw') m = real ? (results.length ? '한 번 더 던지고, 나온 결과를 눌러요' : `${tm.name} 차례! 진짜 윷을 던지고, 나온 결과를 눌러요`) : (results.length ? '한 번 더! 윷을 던져요' : `${tm.name} 차례! 윷을 던져요`);
+      else if (ph === 'throw') m = real ? (again ? '한 번 더 던지고, 나온 결과를 눌러요' : `${tm.name} 차례! 진짜 윷을 던지고, 나온 결과를 눌러요`) : (again ? '한 번 더! 윷을 던져요' : `${tm.name} 차례! 윷을 던져요`);
       else if (ph === 'event') m = '미션을 해 볼까요?';
-      else if (a && a.kind === 'move') m = '콩콩 가는 중…';
+      else if (going) m = '콩콩 가는 중…';
+      else if (api.busy && results.every(r => !optionsFor(G, t, r).length)) m = '움직일 말이 없어요';
       else m = results.length > 1 ? '쓸 결과를 고르고, 움직일 말을 눌러요' : '움직일 말이나 번호를 눌러요';
     }
     const me = $('#msg');
@@ -175,7 +174,7 @@ export function createUI(h) {
       const b = document.createElement('button');
       b.className = 'choice';
       b.dataset.k = ch.k;
-      const who = o.type === 'new' ? '새 말' : o.idx.length > 1 ? `업은 말 ${o.idx.length}` : '';
+      const who = o.type === 'new' ? '새 말' : o.idx.length > 1 ? `업은 말 ${o.idx.length}개` : '';
       const where = destName(ch.dest) || (o.move.back ? '한 칸 뒤로' : `${o.move.path.length}칸`);
       const said = ch.tags.map(tg => tg === 'catch' ? '잡기' : tg === 'stack' ? '업기' : tg === 'shortcut' ? '지름길' : tg.startsWith('tile:') ? (Object.values(TILES).find(x => x.id === tg.slice(5)) || {}).name : '').filter(Boolean);
       const tags = ch.tags.filter(tg => !(tg === 'finish' && ch.dest === FIN)).map(tg => {
@@ -253,7 +252,7 @@ export function createUI(h) {
   let missionTimer = 0;
   function showMission(G, t, mission, auto) {
     const tm = G.teams[t];
-    $('#mTeam').innerHTML = `${esc(tm.name)}의 가족 미션!`;
+    $('#mTeam').innerHTML = auto ? `컴퓨터 ${esc(tm.name)}의 미션!<br><small>컴퓨터 친구가 해 볼게요 👀</small>` : `${esc(tm.name)}의 가족 미션!`;
     $('#mIcon').textContent = mission.icon;
     $('#mText').textContent = mission.text;
     const timer = $('#mTimer');
@@ -324,7 +323,7 @@ export function createUI(h) {
   };
   tb.addEventListener('pointerup', () => release(true));
   tb.addEventListener('pointerleave', () => release(false));
-  tb.addEventListener('pointercancel', () => release(false));
+  tb.addEventListener('pointercancel', () => release(!!hold && performance.now() - hold.t0 >= 220));
   tb.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (!tbOff()) h.throw(0.6); } });
   // 보조 기기(화면 낭독기·음성 제어)는 click만 보낸다
   tb.addEventListener('click', () => { if (tbOff() || performance.now() - ptrThrowAt < 500) return; h.throw(0.6); });
@@ -419,6 +418,7 @@ export function createSetup({ getSettings, setSettings, getPrefs, setPrefs, port
     const rb = $('#resumeBtn'), sb = $('#startBtn');
     $('#setupClose').hidden = !info.inGame;
     rb.hidden = !info.canResume;
+    $('#inGameNote').hidden = !info.inGame;
     rb.textContent = info.inGame ? '하던 경기로 돌아가기' : '저장된 경기 이어하기';
     sb.textContent = info.canResume ? '새 경기 시작!' : '경기 시작!';
     sb.className = 'go ' + (info.canResume ? 'b' : 'a');

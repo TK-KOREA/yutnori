@@ -59,21 +59,21 @@ function isLast(state, t) {
 export function resolveTile(state, t, node, tile, rnd) {
   switch (tile.id) {
     case 'gift': {
-      if (isLast(state, t)) return { kind: 'extra', label: '꼴찌 팀 응원 선물! 한 번 더!' };
+      if (isLast(state, t)) return { kind: 'extra', label: '힘내라 응원 선물! 한 번 더!' };
       const x = rnd();
       if (x < 0.4) return { kind: 'extra', label: '한 번 더!' };
       if (x < 0.75) return { kind: 'forward', steps: 2, label: '앞으로 두 칸!' };
       return { kind: 'forward', steps: 1, label: '앞으로 한 칸!' };
     }
     case 'mission': return { kind: 'mission', mission: drawMission(state, rnd) };
-    case 'gate': return { kind: 'teleport', to: 22, label: '뚝딱! 방으로' };
+    case 'gate': return { kind: 'teleport', to: 22, label: '뚝딱! 가운데 방으로' };
     case 'magpie': return { kind: 'extra', label: '한 번 더!' };
-    case 'puddle': return { kind: 'back', steps: 1, label: '미끄덩~' };
+    case 'puddle': return { kind: 'back', steps: 1, label: '미끄덩~ 한 칸 뒤로!' };
     case 'friend': {
       const home = state.teams[t].pieces.some(q => q.pos === HOME);
-      return home ? { kind: 'friend', label: '친구야, 같이 가자!' } : { kind: 'extra', label: '한 번 더!' };
+      return home ? { kind: 'friend', label: '친구야, 같이 가자!' } : { kind: 'extra', label: '집에 친구가 없어서 한 번 더!' };
     }
-    case 'tiger': return { kind: 'home', label: '어흥!' };
+    case 'tiger': return { kind: 'home', label: '어흥! 집으로 돌아가요' };
     default: return null;
   }
 }
@@ -118,8 +118,8 @@ export const MISSIONS = [
   { id: 24, kind: 'fun', icon: '🧊', text: '3초 동안 얼음!', timer: 3 },
   { id: 25, kind: 'fun', icon: '✍️', text: '손가락으로 공중에 내 이름 쓰기' },
   { id: 26, kind: 'fun', icon: '🙈', text: '눈 감고 열까지 세기' },
-  { id: 27, kind: 'all', icon: '📣', text: '모두 함께 "윷이야!" 외치기' },
-  { id: 28, kind: 'all', icon: '👏', text: '모두 함께 박수 열 번' },
+  { id: 27, kind: 'sound', icon: '📣', text: '모두 함께 "윷이야!" 외치기' },
+  { id: 28, kind: 'sound', icon: '👏', text: '모두 함께 박수 열 번' },
   { id: 29, kind: 'all', icon: '✌️', text: '가위바위보! 이긴 사람과 하이파이브' },
   { id: 30, kind: 'all', icon: '🙇', text: '어른께 세배 한 번 드리기' },
 ];

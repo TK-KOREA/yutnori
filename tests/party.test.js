@@ -44,7 +44,7 @@ test('미션은 한 판에서 겹치지 않고, 다 쓰면 다시 섞는다', ()
 });
 test('조용 모드에서는 소리·몸 미션이 안 나온다', () => {
   const st = mk(true, true);
-  for (let i = 0; i < 40; i++) { const m = drawMission(st, Math.random); ok(m.kind !== 'sound' && m.kind !== 'body', m.text); }
+  for (let i = 0; i < 40; i++) { const m = drawMission(st, Math.random); ok(m.kind !== 'sound' && m.kind !== 'body' && !/외치|박수/.test(m.text), m.text); }
 });
 test('컴퓨터 점수: 웅덩이는 피하고 까치는 좋아한다', () => {
   const st = mk();

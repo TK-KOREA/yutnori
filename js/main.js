@@ -75,20 +75,25 @@ async function boot() {
     try { return pieces.portrait(species, color, face, 128); } catch (e) { return ''; }
   };
 
-  const say = (text, prio = 'normal') => { if (prefs.voice) voice.say(text, { prio }); };
+  const say = (text, prio = 'normal', o = {}) => { if (prefs.voice) voice.say(text, { prio, ...o }); };
   const buzz = name => { if (prefs.sfx) audio.buzz(name); };
 
   /* ---------- 화면 ---------- */
+  // 창이 방금 닫힌 뒤 0.4초 동안의 입력은 무시한다(창을 닫은 두 번째 탭·엔터가 게임을 건드리지 않게)
+  let modalClosedAt = -1e9, lastUndo = -1e9;
+  const justClosed = () => performance.now() - modalClosedAt < 400;
+  // 되돌리기를 두 번 빨리 눌러 두 수가 되돌아가지 않게
+  const undoOnce = () => { const now = performance.now(); if (now - lastUndo < 450) return false; lastUndo = now; return game.undo(); };
   const ui = createUI({
-    throw: power => { unlockAudio(); game.throwNow(power); },
-    real: r => { unlockAudio(); game.realInput(r); },
-    select: i => { sfx('tap'); game.select(i); },
-    choose: k => { sfx('select'); game.choose(k); },
-    undo: () => game.undo(),
+    throw: power => { if (justClosed()) return; unlockAudio(); game.throwNow(power); },
+    real: r => { if (justClosed()) return; unlockAudio(); game.realInput(r); },
+    select: i => { if (justClosed()) return; sfx('tap'); game.select(i); },
+    choose: k => { if (justClosed()) return; sfx('select'); game.choose(k); },
+    undo: () => undoOnce(),
     missionAnswer: done => { ui.hideMission(); if (done) { sfx('clap'); fx.sparkle && fx.sparkle({ x: 0, y: 1, z: 0 }, { color: 0xE8B23A }); } game.missionAnswer(done); },
     again: () => { ui.hideResult(); startGame(); },
     toSetup: () => { ui.hideResult(); openSetup(); },
-    resultUndo: () => { ui.hideResult(); game.undo(); },
+    resultUndo: () => { ui.hideResult(); undoOnce(); },
   });
   ui.setPortrait(portrait);
 
@@ -97,12 +102,14 @@ async function boot() {
   function syncModal() {
     const open = [...document.querySelectorAll('.modal')].some(m => !m.hidden);
     const app = $('#app');
+    if (!open && app.inert) modalClosedAt = performance.now();   // 열려 있던 창이 닫힌 순간
     if (open && !app.inert) { const a = document.activeElement; modalReturn = app.contains(a) ? a : null; }
     app.inert = open;
     if (!open) {
       const a = document.activeElement;
       if (!a || a === document.body || a.closest('.modal')) {
-        const back = modalReturn && modalReturn.isConnected && !modalReturn.hidden ? modalReturn : $('#panel');
+        const back = modalReturn && modalReturn.isConnected && !modalReturn.hidden ? modalReturn
+          : ($('#throwBtn:not([hidden])') || $('#realPad:not([hidden]) button') || $('#panel'));
         back && back.focus && back.focus({ preventScroll: true });
       }
       modalReturn = null;
@@ -110,6 +117,7 @@ async function boot() {
   }
   const modalObs = new MutationObserver(syncModal);
   document.querySelectorAll('.modal').forEach(m => modalObs.observe(m, { attributes: true, attributeFilter: ['hidden'] }));
+  syncModal();   // 설정 창은 처음부터 열려 있으므로 뒤 화면을 바로 막는다
 
   const teamName = t => G.teams[t].name;
   const col = t => G.teams[t].color;
@@ -136,13 +144,20 @@ async function boot() {
       ui.clearChoices();
       ui.hideMission();
       ui.hideResult();
-      ctx.setFraming(G.phase === 'move' ? 'board' : 'throw', true);
-      if (info && info.resume) ui.toast('저장된 경기를 이어서 해요');
+      ctx.setFraming(G.phase === 'move' || G.settings.input === 'real' ? 'board' : 'throw', true);
       lastTurnSpoken = -1;
-      requestWakeLock();
+      if (info && info.resume) {
+        ui.toast('저장된 경기를 이어서 해요');
+        // 저장된 그 차례를 그대로 이어 갈 때만 말한다(연출 마무리·차례 넘김이면 turnStart가 알려 준다)
+        const handsOff = G.phase === 'over' || G.moving || (G.phase === 'move' && !G.results.length) || (G.phase === 'throw' && G.pending <= 0 && !G.results.length);
+        if (!handsOff) { lastTurnSpoken = G.turnSerial; sfx('turn'); say(`${teamName(G.turn)} 차례!`, 'normal'); }
+      }
+      keepAwake();
     },
     update(G2, api) {
       G = G2;
+      // 잡기·까치·선물로 한 번 더 던질 때도 멍석이 보이게
+      if (G.phase === 'throw' && G.settings.input !== 'real' && api && !api.busy && !api.anim && !G.teams[G.turn].cpu) ctx.setFraming('throw');
       ui.render(G, api);
       // 막판 긴장: 남은 팀이 모두 마지막 말 하나씩만 남으면 장단이 빨라진다
       const alive = G.teams.filter(tm => tm.rank == null);
@@ -155,11 +170,12 @@ async function boot() {
       pieces.setTurn(t);
       pieces.cheer(t);
       ui.buildPad(col(t));
-      ctx.setFraming('throw');
+      ctx.setFraming(G.settings.input === 'real' ? 'board' : 'throw');
       sfx('turn');
-      if (lastTurnSpoken !== G.turnSerial) { lastTurnSpoken = G.turnSerial; say(`${teamName(t)} 차례!`, 'normal'); }
+      if (lastTurnSpoken !== G.turnSerial) { lastTurnSpoken = G.turnSerial; say(`${teamName(t)} 차례!`, 'normal', { wait: true }); }
     },
     async throwSticks(G2, t, roll, o) {
+      if (o.gentle) { yut.rest(roll.flats, roll.out); return; }   // 진짜 윷: 카메라는 판에 두고 윷가락만 결과대로 놓는다
       ctx.setFraming('throw');
       pieces.lookAt(yut.matCenter());
       const dramatic = roll.r === 4 ? 'yut' : roll.r === 5 ? 'mo' : null;
@@ -167,7 +183,7 @@ async function boot() {
       pieces.lookAt(null);
     },
     async showResult(G2, t, r, o) {
-      const c = col(t), mat = yut.matCenter();
+      const c = col(t), mat = G.settings.input === 'real' ? { x: 0, z: 0 } : yut.matCenter();
       pieces.reactThrow(t, r);
       sfx('result', { r });
       if (r === 'nak') {
@@ -246,13 +262,13 @@ async function boot() {
         const n = ev.stackSize;
         const name = n >= 4 ? '넉동무니' : n === 3 ? '석동무니' : '두동무니';
         ui.banner({ big: '업었다!', img: portrait(G.teams[t].species, c, 'happy'), sub: `${name}! 함께 가요` });
-        say(`업었다! ${name}`, 'normal');
+        say(`업었다! ${name}`, 'normal', { wait: true });
         await wait(650);
       } else if (ev.finished && ev.finished.length) {
-        ui.banner({ big: '완주!', img: portrait(G.teams[t].species, c, 'proud'), sub: `${ev.finished.length}개가 집에 들어왔어요` });
-        say('완주!', 'normal');
+        ui.banner({ big: '완주!', img: portrait(G.teams[t].species, c, 'proud'), sub: `${ev.finished.length}개가 완주했어요` });
+        say('완주!', 'normal', { wait: true });
         await wait(650);
-      } else if (ev.shortcut === false && (ev.dest === 5 || ev.dest === 10 || ev.dest === 22)) {
+      } else if (ev.dest === 5 || ev.dest === 10 || ev.dest === 22) {
         ui.toast(`${CORNER[ev.dest]}에 섰어요! 다음엔 지름길로 가요`);
       }
     },
@@ -274,7 +290,7 @@ async function boot() {
       sfx('event', { kind: tile.id });
       if (eff.kind === 'extra') buzz('stack');
       ui.banner({ big: `${tile.icon} ${tile.name}`, sub: eff.label || '' });
-      say(eff.label ? `${tile.name}! ${eff.label}` : tile.name, 'normal');
+      say(eff.label ? `${tile.name}! ${eff.label}` : tile.name, 'normal', { wait: true });
       await wait(1000);
     },
     async teleport(G2, t, idx, to, ev) {
@@ -293,7 +309,7 @@ async function boot() {
       sfx('event', { kind: 'mission' });
       if (G.event) board.pulseTile(G.event.node);
       ui.showMission(G, t, mission, o.auto);
-      say(`${teamName(t)} 미션! ${mission.text}`, 'normal');
+      say(o.auto ? `컴퓨터 ${josa(teamName(t), '이', '가')} 미션을 해냈어요!` : `${teamName(t)} 미션! ${mission.text}`, 'normal');
       if (o.auto) {
         pieces.cheer(t);
         await wait(2400);
@@ -317,7 +333,8 @@ async function boot() {
       await wait(2200);
       if (G !== G2) return;
       ui.showResult(G, awards, today, game.canUndo());
-      awards.forEach(a => { if (a.award) { /* 시상 문구도 읽어 준다 */ } });
+      // 글을 못 읽는 아이도 자기 팀 상을 들을 수 있게 읽어 준다
+      say(awards.map(a => `${josa(teamName(a.t), '은', '는')} ${a.award.name}`).join('! ') + '!', 'normal', { wait: true });
     },
     toast(text) { ui.toast(text); },
   };
@@ -363,24 +380,24 @@ async function boot() {
 
   /* 터치: 말·도착 칸 고르기, 멍석 쓸어 던지기 */
   ctx.onPick(data => {
-    if (!data || !G || G.phase !== 'move' || game.busy || !game.human()) return;
+    if (!data || !G || G.phase !== 'move' || game.busy || !game.human() || justClosed()) return;
     if (data.kind === 'dest') {
       if (data.ks.length === 1) { sfx('select'); game.choose(data.ks[0]); }
-      else { ui.flashChoices(data.ks); ui.toast('어느 말을 움직일까요? 아래 번호를 눌러요'); }
+      else { ui.flashChoices(data.ks); ui.toast('어느 말을 움직일까요? 번호를 눌러요'); }
     } else if (data.kind === 'piece') {
       const k = game.choiceForPiece(data.t, data.i);
       if (k >= 0) { sfx('select'); pieces.press(data.t, data.i); game.choose(k); }
       else if (data.t === G.turn) ui.toast('이 말은 이번 결과로 움직일 수 없어요');
     }
   });
-  ctx.onFlick(power => { unlockAudio(); game.throwNow(power); }, () => game.canThrow() && G && G.settings.input === 'screen');
+  ctx.onFlick(power => { if (justClosed()) return; unlockAudio(); game.throwNow(power); }, () => game.canThrow() && G && G.settings.input === 'screen');
 
   /* ---------- 설정 화면 ---------- */
   const setup = createSetup({
     getSettings: () => settings,
     setSettings: (s, rerender) => { settings = s; store.set(KEY.settings, settings); if (rerender) setup.render(setupInfo()); },
     getPrefs: () => prefs,
-    setPrefs: p => { prefs = p; store.set(KEY.prefs, prefs); applyPrefs(); },
+    setPrefs: p => { const was = prefs.sfx; prefs = p; store.set(KEY.prefs, prefs); unlockAudio(); applyPrefs(); if (p.sfx && !was) sfx('tap'); },
     portrait,
     onStart: () => { unlockAudio(); startGame(); },
     onResume: () => {
@@ -409,13 +426,15 @@ async function boot() {
     $('#setup').hidden = false;
     setTimeout(() => { $('#setup .sheet').scrollTop = 0; const b = $('#setupClose:not([hidden])') || $('#resumeBtn:not([hidden])') || $('#startBtn'); b && b.focus({ preventScroll: true }); }, 50);
   }
-  function closeSetup() {
+  /** 설정 창 닫기. 경기로 돌아가면 바로 바꿀 수 있는 설정(사람/컴퓨터, 컴퓨터 세기, 자동 두기, 말 빠르기)을 반영한다 */
+  function closeSetup(apply = true) {
     $('#setup').hidden = true;
+    if (apply && G && G.phase !== 'over') { pieces.setSpeed(settings.speed === 'fast' ? 0.6 : 1); game.applyLive(toGameSettings(settings)); }
     game.pause(false);
   }
   function startGame() {
     store.set(KEY.settings, settings);
-    closeSetup();
+    closeSetup(false);
     const seed = (crypto.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 2 ** 31)) | 0;
     game.newGame(toGameSettings(settings), seed);
   }
@@ -483,15 +502,16 @@ async function boot() {
   /* ---------- 키보드 ---------- */
   document.addEventListener('keydown', e => {
     if (e.target && e.target.matches && e.target.matches('input, textarea')) return;
-    ctx.poke();
+    ctx.poke(); keepAwake();
     if (e.key === 'Escape') { if (!$('#setup').hidden && G && G.phase !== 'over') closeSetup(); return; }
     if (!G || !$('#setup').hidden || !$('#result').hidden) return;
     if (!$('#mission').hidden) return;
     const k = (e.key || '').toLowerCase();
-    if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); game.undo(); return; }
+    if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); if (!e.repeat) undoOnce(); return; }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (k === 'u' || k === 'backspace') { e.preventDefault(); game.undo(); return; }
+    if (k === 'u' || k === 'backspace') { e.preventDefault(); if (!e.repeat) undoOnce(); return; }
     if (G.phase === 'throw') {
+      if (e.repeat || justClosed()) { if (k === ' ' || k === 'enter') e.preventDefault(); return; }
       if (G.settings.input === 'real') {
         const map = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 0: BACKDO, b: BACKDO, '-': BACKDO, n: 'nak' };
         if (k in map) { e.preventDefault(); unlockAudio(); game.realInput(map[k]); }
@@ -500,7 +520,7 @@ async function boot() {
         e.preventDefault(); unlockAudio(); game.throwNow(0.6);
       }
     } else if (G.phase === 'move') {
-      if (/^[1-9]$/.test(k)) { e.preventDefault(); game.choose(+k - 1); }
+      if (/^[1-9]$/.test(k)) { e.preventDefault(); if (e.repeat || justClosed()) return; game.choose(+k - 1); }
       else if (k === 'arrowleft' || k === 'arrowright') {
         const n = G.results.length;
         if (n < 2) return;
@@ -512,16 +532,26 @@ async function boot() {
       }
     }
   });
-  document.addEventListener('pointerdown', () => ctx.poke(), { passive: true });
+  document.addEventListener('pointerdown', () => { ctx.poke(); keepAwake(); }, { passive: true });
 
   /* ---------- 화면 꺼짐 방지 ---------- */
-  let wakeLock = null;
-  function releaseWakeLock() { if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } }
+  // 누군가 놀고 있을 때만 화면을 켜 둔다: 탭·키마다 5분 타이머를 다시 건다(컴퓨터끼리 시연은 끝날 때까지)
+  let wakeLock = null, wlPending = false, wlIdle = 0;
+  const WL_IDLE_MS = 5 * 60 * 1000;
+  function releaseWakeLock() { clearTimeout(wlIdle); const s = wakeLock; wakeLock = null; if (s) s.release().catch(() => {}); }
   async function requestWakeLock() {
-    try { if ('wakeLock' in navigator && document.visibilityState === 'visible' && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } } catch (e) { /* 무시 */ }
+    if (wakeLock || wlPending || !('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+    wlPending = true;
+    try { const s = await navigator.wakeLock.request('screen'); s.addEventListener('release', () => { if (wakeLock === s) wakeLock = null; }); wakeLock = s; } catch (e) { /* 무시 */ } finally { wlPending = false; }
+  }
+  function keepAwake() {
+    if (!G || G.phase === 'over') return;
+    requestWakeLock();
+    clearTimeout(wlIdle);
+    if (!G.teams.every(t => t.cpu)) wlIdle = setTimeout(releaseWakeLock, WL_IDLE_MS);
   }
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && G && G.phase !== 'over') requestWakeLock();
+    if (document.visibilityState === 'visible') keepAwake();
     if (document.visibilityState === 'hidden') voice.cancel();
   });
 
@@ -586,7 +616,7 @@ function registerSW() {
       nw.addEventListener('statechange', () => {
         if (nw.state === 'installed' && navigator.serviceWorker.controller) {
           const t = document.getElementById('toast');
-          if (t) { t.textContent = '새 버전이 있어요. 경기가 끝나면 새로 고침해 주세요'; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 4000); }
+          if (t) { t.textContent = '새 버전이 나왔어요! 경기 뒤 새로 고침해요'; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 4000); }
         }
       });
     });

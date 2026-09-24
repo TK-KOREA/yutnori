@@ -2,15 +2,13 @@
 // 상태 G는 JSON으로 저장할 수 있고, 모든 난수는 G.seed에서 나온다(되돌려도 결과가 같다).
 import {
   HOME, DONE, FIN, BACKDO, newTeams, optionsFor, applyMove, placeGroup, groupAt, rollYut, flatsFor,
-  rngNext, isBonusThrow, computeMove, distToFin, RESULT_NAME,
+  rngNext, isBonusThrow, computeMove, distToFin, RESULT_NAME, josa,
 } from './rules.js';
 import { chooseMove, setTileBonus } from './ai.js';
 import { TILES, newPartyState, tileAt, resolveTile, coolDown, tileBonusFor } from './party.js';
 
 export const SAVE_VERSION = 3;
 
-/** 받침 있으면 a, 없으면 b */
-const josa = (w, a, b) => { const c = String(w).charCodeAt(String(w).length - 1); return w + (c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 ? a : b); };
 const HIST_MAX = 80;
 
 setTileBonus((st, t, dest) => tileBonusFor(st, t, dest));
@@ -75,15 +73,20 @@ export const AWARDS = [
   { id: 'catch', icon: '🏹', name: '잡기왕', desc: '상대 말을 가장 많이 잡았어요', score: s => s.caught },
   { id: 'luck', icon: '🍀', name: '행운왕', desc: '윷과 모가 가장 많이 나왔어요', score: s => s.res[4] + s.res[5] * 2 },
   { id: 'stack', icon: '🎒', name: '업기왕', desc: '친구를 가장 많이 업어 줬어요', score: s => (s.maxStack > 1 ? s.maxStack * 10 + s.stacks : 0) },
-  { id: 'comeback', icon: '🚀', name: '대역전상', desc: '꼴찌에서 쑥쑥 올라왔어요', score: (s, G, t) => { const p = finalOrder(G).indexOf(t); return s.lastTurns > 0 && p <= 1 && p < G.teams.length - 1 ? s.lastTurns : 0; } },
+  { id: 'comeback', icon: '🚀', name: '대역전상', desc: '뒤에서부터 쑥쑥 따라왔어요', score: (s, G, t) => { const p = finalOrder(G).indexOf(t); return s.lastTurns > 0 && p <= 1 && p < G.teams.length - 1 ? s.lastTurns : 0; } },
   { id: 'shortcut', icon: '🧭', name: '지름길 탐험가', desc: '지름길을 가장 많이 탔어요', score: s => s.shortcuts },
   { id: 'mission', icon: '🎭', name: '미션 스타', desc: '가족 미션을 가장 많이 해냈어요', score: s => s.missions },
-  { id: 'first', icon: '🏃', name: '첫 완주', desc: '가장 먼저 말을 들여보냈어요', score: s => (s.firstFinish ? 1 : 0) },
+  { id: 'first', icon: '🏃', name: '첫 완주상', desc: '가장 먼저 말을 들여보냈어요', score: s => (s.firstFinish ? 1 : 0) },
   { id: 'tumbler', icon: '💪', name: '오뚝이상', desc: '잡혀도 씩씩하게 다시 달렸어요', score: s => (s.gotCaught >= 2 ? s.gotCaught : 0) },
   { id: 'back', icon: '🔙', name: '뒷걸음 달인', desc: '빽도가 가장 많이 나왔어요', score: s => s.res[-1] },
-  { id: 'turtle', icon: '🐢', name: '거북이상', desc: '천천히 가도 괜찮아! 도가 가장 많이 나왔어요', score: s => s.res[1] },
+  { id: 'turtle', icon: '🐢', name: '거북이상', desc: '천천히 가도 괜찮아요! 도가 가장 많이 나왔어요', score: s => s.res[1] },
 ];
 export const AWARD_FALLBACK = { id: 'best', icon: '🌟', name: '끝까지 최고상', desc: '끝까지 즐겁게 함께했어요' };
+/** 기록으로 받을 상이 모자랄 때 나눠 주는 상(팀은 최대 4개라 늘 하나는 남는다) */
+const EXTRA_AWARDS = [AWARD_FALLBACK,
+  { id: 'smile', icon: '😊', name: '웃음상', desc: '함께 웃으며 즐겁게 놀았어요' },
+  { id: 'cheer', icon: '📣', name: '응원왕', desc: '친구들을 신나게 응원했어요' },
+  { id: 'friend', icon: '🤝', name: '사이좋은상', desc: '사이좋게 끝까지 함께했어요' }];
 
 export function computeAwards(G) {
   const order = finalOrder(G);
@@ -99,8 +102,20 @@ export function computeAwards(G) {
       if (v < top) continue;
       best = a; break;
     }
-    if (best) given.add(best.id);
-    out[t] = best || AWARD_FALLBACK;
+    if (best) { given.add(best.id); out[t] = best; }
+  }
+  // 1등 기록이 없는 팀: 남은 상 중 자기 기록이 가장 좋은 것, 없으면 남은 추가 상(팀마다 다른 상)
+  for (const t of order.slice().reverse()) {
+    if (out[t]) continue;
+    let best = null, bv = 0;
+    for (const a of AWARDS) {
+      if (given.has(a.id)) continue;
+      const v = a.score(G.stats[t], G, t);
+      if (v > bv) { best = a; bv = v; }
+    }
+    best = best || EXTRA_AWARDS.find(a => !given.has(a.id));
+    given.add(best.id);
+    out[t] = best;
   }
   return order.map((t, k) => ({ t, place: k + 1, award: out[t] }));
 }
@@ -154,7 +169,9 @@ export function createGame({ view, store, clock } = {}) {
     busy = false;
     anim = null;
     const st = JSON.parse(top.state);
+    const who = G.teams.map(t => [t.cpu, t.level]);   // 경기 중에 바꾼 사람/컴퓨터 설정은 되돌리지 않는다
     G = { ...st, settings: G.settings };
+    G.teams.forEach((t, i) => { if (who[i]) [t.cpu, t.level] = who[i]; });
     noAuto = true;
     view.load(G, { undo: true });
     view.toast && view.toast('한 수 되돌렸어요');
@@ -165,7 +182,7 @@ export function createGame({ view, store, clock } = {}) {
   /* ---------------- 흐름 ---------------- */
 
   function beginTurn(tk) {
-    G.phase = 'throw'; G.pending = 1; G.results = []; G.selected = 0;
+    G.phase = 'throw'; G.pending = 1; G.results = []; G.selected = 0; G.bonus = false;
     save();
     view.turnStart(G, G.turn);
     return step(tk);
@@ -329,7 +346,7 @@ export function createGame({ view, store, clock } = {}) {
 
   function afterMove(tk) {
     if (G.phase === 'event') return step(tk);
-    if (G.pending > 0) G.phase = 'throw';
+    if (G.pending > 0) { G.phase = 'throw'; G.bonus = true; }
     else if (G.results.length) G.phase = 'move';
     else return endTurn(tk);
     return step(tk);
@@ -343,7 +360,7 @@ export function createGame({ view, store, clock } = {}) {
       victims.forEach(v => { G.stats[v].gotCaught++; });
       log(`${josa(G.teams[t].name, '이', '가')} ${[...victims].map(v => G.teams[v].name).join(', ')} 말을 잡았어요`, t);
     }
-    if (ev.stacked) { st.stacks++; st.maxStack = Math.max(st.maxStack, ev.stackSize); log(`${G.teams[t].name} 말을 업었어요`, t); }
+    if (ev.stacked) { st.stacks++; st.maxStack = Math.max(st.maxStack, ev.stackSize); log(`${josa(G.teams[t].name, '이', '가')} 말을 업었어요`, t); }
     if (shortcut) st.shortcuts++;
     if (ev.finished && ev.finished.length) {
       if (!G.stats.some(s => s.firstFinish)) st.firstFinish = true;
@@ -527,6 +544,21 @@ export function createGame({ view, store, clock } = {}) {
     },
     missionAnswer(done) { if (missionWait) missionWait(!!done); },
     pause(on) { paused = !!on; },
+    /** 경기 중 바꿔도 되는 설정(사람/컴퓨터·컴퓨터 세기·자동 두기)을 지금 판에 반영 */
+    applyLive(s) {
+      if (!G || G.phase === 'over' || !s) return;
+      let changed = false;
+      if (G.settings.input !== 'real') G.teams.forEach((tm, i) => {
+        const x = s.teams && s.teams[i];
+        if (!x) return;
+        if (tm.cpu !== !!x.cpu || tm.level !== (x.level || tm.level)) changed = true;
+        tm.cpu = !!x.cpu; tm.level = x.level || tm.level;
+      });
+      G.settings.auto = !!s.auto;
+      save();
+      // 방금 컴퓨터가 된 팀은 바로 두고, 컴퓨터가 기다리던 차례는 사람에게 돌려준다
+      if (changed && !busy && (G.phase === 'throw' || G.phase === 'move')) { token++; step(token); }
+    },
     newGame(settings, seed) {
       token++;
       busy = false; hist = []; noAuto = false; anim = null;

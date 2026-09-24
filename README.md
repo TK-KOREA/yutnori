@@ -56,4 +56,4 @@ python3 -m http.server 8000
 
 ## 라이선스
 
-MIT. 글꼴 Jua·Gowun Dodum(SIL Open Font License)은 Google Fonts에서 불러옵니다.
+MIT. 글꼴 Jua·Gowun Dodum은 SIL Open Font License로, 한글 2,350자로 줄여 `fonts/`에 함께 두었습니다(`fonts/OFL.txt`).

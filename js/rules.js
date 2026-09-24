@@ -272,3 +272,14 @@ export function rollYut(state) {
 }
 
 export const isBonusThrow = r => r === 4 || r === 5;
+
+/** 받침 있으면 a, 없으면 b (이/가, 은/는, 을/를). 숫자·영문으로 끝나는 이름도 읽는 소리로 판단 */
+export function josa(w, a, b) {
+  const s = String(w).trim();
+  const c = s.charCodeAt(s.length - 1);
+  let has = false;
+  if (c >= 0xAC00 && c <= 0xD7A3) has = (c - 0xAC00) % 28 !== 0;
+  else if (c >= 48 && c <= 57) has = '013678'.includes(s[s.length - 1]);   // 영·일·삼·육·칠·팔(십·백은 0) → 받침
+  else if (/[A-Za-z]$/.test(s)) has = /(ng|[lmn])$/i.test(s);              // Tim·Ben·Paul → 이, Anna·Max → 가
+  return w + (has ? a : b);
+}
