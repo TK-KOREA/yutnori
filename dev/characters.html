@@ -694,15 +694,6 @@ async function run() {
       document.body.dataset.test = hudExtra;
       if (bad || pedBad) document.title = 'ERR ' + hudExtra;
       setTimeout(freeze, 50);
-    } else if (demo === 'orbtest') {
-      // 용이 여럿일 때 한 마리의 여의주만 빛나야 한다(sp=dragon,horse&teams=2)
-      setup({ 0: [3, 8, -1, -1] });
-      await sleep(200);
-      pieces._debug.gesture(0, 0, 'glow', 800);
-      await sleep(400);
-      const e = [0, 1, 2, 3].map(i => { const r = pieces._debug.rig(0, i); return r.orb ? r.orb.material.emissiveIntensity.toFixed(2) : '-'; });
-      hudExtra = 'orb ' + e.join(' ');
-      document.body.dataset.test = hudExtra;
     } else if (demo === 'warmtest') {
       // 초상화 미리 굽기: setTeams 뒤 쉬는 틈에 다 구워지고, 그 뒤 배너용 초상화는 바로 나와야 한다
       const t0 = performance.now();

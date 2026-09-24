@@ -25,7 +25,7 @@ export const SPECIES = [
   { id: 'dog', animal: '개', name: '복실이', yut: '개', zodiac: '술', intro: '우리 토종 삽살개', cry: '멍멍' },
   { id: 'sheep', animal: '양', name: '몽실이', yut: '걸', zodiac: '미', intro: '몽실몽실 구름 양', cry: '매애' },
   { id: 'cow', animal: '소', name: '누렁이', yut: '윷', zodiac: '축', intro: '딸랑딸랑 워낭 한우', cry: '음매' },
-  { id: 'dragon', animal: '용', name: '미르', yut: null, zodiac: '진', intro: '여의주를 든 아기 청룡', cry: '뾰로롱' },
+  { id: 'rooster', animal: '닭', name: '꼬꼬', yut: null, zodiac: '유', intro: '새벽을 깨우는 꼬꼬닭', cry: '꼬끼오' },
 ];
 export const speciesById = id => SPECIES.find(s => s.id === id) || SPECIES[0];
 

@@ -545,7 +545,7 @@ async function boot() {
   // 설정 화면에 쓰는 동물 얼굴을 한가할 때 미리 그려 둔다
   if (pieces.prewarmPortraits) {
     const list = [];
-    for (let c = 0; c < 4; c++) ['horse', 'tiger', 'rabbit', 'pig', 'dog', 'sheep', 'cow', 'dragon'].forEach(sp => list.push([sp, c, 'happy', 128]));
+    for (let c = 0; c < 4; c++) ['horse', 'tiger', 'rabbit', 'pig', 'dog', 'sheep', 'cow', 'rooster'].forEach(sp => list.push([sp, c, 'happy', 128]));
     pieces.prewarmPortraits(list);
   }
 

@@ -487,16 +487,17 @@ export function createAudio({ context } = {}) {
       tone(t, [[0, 700 * p], [0.12, 1400 * p]], 0.14, 0.18, d, { a: 0.005, hold: 0.05 });
       return 0.18;
     },
-    // 뾰로롱: 올라가는 세 음 + 반짝
-    dragon(t, d, p) {
-      [880, 1175, 1568, 2093].forEach((f, k) => tone(t + k * 0.06, f * p, 0.18, 0.26, d, { type: 'triangle', vib: [9, 12] }));
-      sparkle(t + 0.2, 0.8, d);
-      return 0.55;
+    // 꼬끼오: 짧은 두 음 + 길게 끄는 '오~'
+    rooster(t, d, p) {
+      tone(t, [[0, 620 * p], [0.07, 700 * p]], 0.09, 0.2, d, { type: 'sawtooth', lp: 2600, a: 0.005, hold: 0.04 });
+      tone(t + 0.11, [[0, 900 * p], [0.07, 980 * p]], 0.09, 0.2, d, { type: 'sawtooth', lp: 2800, a: 0.005, hold: 0.04 });
+      tone(t + 0.22, [[0, 1000 * p], [0.12, 1080 * p], [0.45, 760 * p]], 0.5, 0.22, d, { type: 'sawtooth', lp: [[0, 3000], [0.45, 1600]], vib: [7, 10], a: 0.01, hold: 0.25 });
+      return 0.75;
     },
   };
 
   /** 울음 크기 맞춤(LUFS-M −22 안팎이 되게 잰 값) */
-  const CRY_LEVEL = { horse: 0.75, tiger: 0.42, rabbit: 0.85, pig: 0.72, dog: 0.48, sheep: 0.7, cow: 0.38, dragon: 0.65 };
+  const CRY_LEVEL = { horse: 0.75, tiger: 0.42, rabbit: 0.85, pig: 0.72, dog: 0.48, sheep: 0.7, cow: 0.38, rooster: 0.37 };
 
   /* ---------------- 효과음 ---------------- */
   // 각 함수는 (시작 시각, 인자, 출력 노드)를 받아 소리를 걸고, 소리 길이(초)를 돌려준다.
