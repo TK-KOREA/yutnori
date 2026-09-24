@@ -2,7 +2,9 @@
 
 아이와 가족이 한 화면에 둘러앉아 즐기는 3D 윷놀이입니다. 설치 없이 브라우저에서 바로 열립니다.
 
-**바로 하기: {{PLAY_URL}}**
+**바로 하기: https://tk-korea.github.io/yutnori/**
+
+휴대폰·태블릿에서는 브라우저 메뉴의 "홈 화면에 추가"로 앱처럼 설치할 수 있습니다.
 
 <p align="center"><img src="icons/icon-512.png" width="120" alt="윷놀이 한마당 아이콘"></p>
 
