@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>윷놀이 한마당</title>
+<meta name="description" content="아이와 가족이 함께하는 3D 윷놀이. 설빔 입은 동물 친구들과 잔치판 미션까지.">
+<meta name="theme-color" content="#C0392B">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="윷놀이">
+<meta property="og:title" content="윷놀이 한마당">
+<meta property="og:description" content="아이와 가족이 함께하는 3D 윷놀이">
+<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jua&family=Gowun+Dodum&display=swap" rel="stylesheet" crossorigin>
+<link rel="stylesheet" href="css/app.css">
+<script type="importmap">{"imports":{"three":"./vendor/three/three.module.min.js","three/addons/":"./vendor/three/addons/"}}</script>
+</head>
+<body>
+<div class="app" id="app">
+  <aside id="side">
+    <header id="hud" aria-label="경기 현황">
+      <div id="turnBar">
+        <img id="turnFace" alt="" width="48" height="48">
+        <div class="turnText"><b id="turnName"></b><span id="turnSub"></span></div>
+        <div class="tools">
+          <button class="tool" id="soundBtn" aria-label="소리"></button>
+          <button class="tool" id="menuBtn" aria-label="설정" title="설정">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="teams"></div>
+    </header>
+    <section id="panel" tabindex="-1">
+      <p id="msg" role="status" aria-live="polite"></p>
+      <div id="tokens" role="group" aria-label="나온 결과"></div>
+      <div id="choices" role="group" aria-label="움직일 말 고르기"></div>
+      <div id="realPad" hidden aria-label="진짜 윷 결과 누르기"></div>
+      <div class="actions">
+        <button id="undoBtn" class="iconBtn" aria-label="되돌리기" title="되돌리기 (U)">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+        </button>
+        <button id="throwBtn">
+          <span class="charge" aria-hidden="true"></span>
+          <span class="tlabel">윷 던지기</span>
+        </button>
+      </div>
+      <ol id="log" aria-label="경기 기록"></ol>
+    </section>
+  </aside>
+  <main id="stage" aria-describedby="boardText">
+    <div id="banner" aria-hidden="true"></div>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <p id="srNews" class="sr-only" aria-live="polite" aria-atomic="true"></p>
+    <p id="boardText" class="sr-only"></p>
+  </main>
+</div>
+
+<!-- 시작·설정 -->
+<div class="modal" id="setup" role="dialog" aria-modal="true" aria-labelledby="setupTitle">
+  <div class="sheet wide">
+    <button class="sheetClose" id="setupClose" aria-label="경기로 돌아가기" hidden>✕</button>
+    <div class="brand">
+      <h1 id="setupTitle">윷놀이 한마당</h1>
+      <p>설빔 입은 동물 친구들과 온 가족이 함께!</p>
+    </div>
+    <div class="field">
+      <div class="flabel">어떻게 놀까요?</div>
+      <div class="presets" id="presets">
+        <button class="preset" data-preset="party"><span class="pic">🎉</span><b>가족 잔치판</b><span>재미있는 칸과 가족 미션</span></button>
+        <button class="preset" data-preset="classic"><span class="pic">🎋</span><b>전통 윷놀이</b><span>옛날 규칙 그대로</span></button>
+        <button class="preset" data-preset="real"><span class="pic">🪵</span><b>진짜 윷으로</b><span>윷은 직접 던지고 결과만 눌러요</span></button>
+      </div>
+    </div>
+    <div class="field">
+      <div class="rrow"><span class="flabel">몇 팀?</span><div class="seg" data-key="teamCount" role="group" aria-label="팀 수"><button data-v="2">2팀</button><button data-v="3">3팀</button><button data-v="4">4팀</button></div></div>
+      <div id="teamRows"></div>
+    </div>
+    <div class="field rrow"><span class="flabel">얼마나 길게?</span><div class="seg" data-key="pieces" role="group" aria-label="말 개수"><button data-v="2">짧게<small>말 2개</small></button><button data-v="3">보통<small>말 3개</small></button><button data-v="4">길게<small>말 4개</small></button></div></div>
+    <details class="rules">
+      <summary>어른용 규칙</summary>
+      <div class="rrow"><span>잔치 칸</span><div class="seg sm" data-key="party" role="group" aria-label="잔치 칸"><button data-v="on">켜기</button><button data-v="off">끄기</button></div></div>
+      <div class="rrow" id="rowQuiet"><span>조용한 미션만</span><div class="seg sm" data-key="quiet" role="group" aria-label="조용한 미션만"><button data-v="on">네</button><button data-v="off">아니요</button></div></div>
+      <div class="rrow"><span>빽도</span><div class="seg sm" data-key="backdo" role="group" aria-label="빽도"><button data-v="on">쓰기</button><button data-v="off">안 쓰기</button></div></div>
+      <div class="rrow" id="rowBackEmpty"><span>판에 말이 없을 때 빽도</span><div class="seg sm" data-key="backdoEmpty" role="group" aria-label="판에 말이 없을 때 빽도"><button data-v="void">무효</button><button data-v="enter">참먹이 뒤로 출발</button></div></div>
+      <div class="rrow"><span>완주</span><div class="seg sm" data-key="finish" role="group" aria-label="완주 규칙"><button data-v="pass">참먹이 지나야</button><button data-v="touch">닿으면</button></div></div>
+      <div class="rrow" id="rowOdds"><span>윷 확률</span><div class="seg sm" data-key="odds" role="group" aria-label="윷 확률"><button data-v="real">진짜 윷처럼</button><button data-v="fun">윷·모 자주</button></div></div>
+      <div class="rrow" id="rowNak"><span>낙</span><div class="seg sm" data-key="nak" role="group" aria-label="낙"><button data-v="off">없음</button><button data-v="on">가끔</button></div></div>
+      <div class="rrow" id="rowEnd"><span>경기 끝</span><div class="seg sm" data-key="endRule" role="group" aria-label="경기 끝"><button data-v="first">1등 나오면</button><button data-v="all">모든 순위까지</button></div></div>
+      <div class="rrow"><span>갈 곳이 하나뿐이면</span><div class="seg sm" data-key="auto" role="group" aria-label="자동 이동"><button data-v="on">알아서 가기</button><button data-v="off">직접 누르기</button></div></div>
+      <div class="rrow"><span>말 움직임</span><div class="seg sm" data-key="speed" role="group" aria-label="말 움직임 속도"><button data-v="normal">보통</button><button data-v="fast">빠르게</button></div></div>
+    </details>
+    <details class="rules" id="soundBox">
+      <summary>소리와 목소리</summary>
+      <div class="rrow"><span>효과음</span><div class="seg sm" data-pref="sfx" role="group" aria-label="효과음"><button data-v="on">켜기</button><button data-v="off">끄기</button></div></div>
+      <div class="rrow"><span>읽어 주기</span><div class="seg sm" data-pref="voice" role="group" aria-label="읽어 주기"><button data-v="on">켜기</button><button data-v="off">끄기</button></div></div>
+      <div class="rrow"><span>배경 음악</span><div class="seg sm" data-pref="music" role="group" aria-label="배경 음악"><button data-v="on">켜기</button><button data-v="off">끄기</button></div></div>
+      <p class="note" id="voiceNote" hidden>이 기기에는 한국어 목소리가 없어서 읽어 주기를 쓸 수 없어요.</p>
+    </details>
+    <div class="screenRow">
+      <button class="go b small" id="viewBtn" >
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.6-6.4"/><path d="M3 4v5h5"/></svg> 시점 처음으로
+      </button>
+      <button class="go b small" id="fsBtn" >
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg> 전체 화면
+      </button>
+    </div>
+    <div class="btns">
+      <button class="go a" id="resumeBtn" hidden>이어서 하기</button>
+      <button class="go a" id="startBtn">경기 시작!</button>
+    </div>
+    <details class="help">
+      <summary>윷놀이 배우기</summary>
+      <div class="animalCards" id="animalCards"></div>
+      <ul>
+        <li>윷가락 넷 중 평평한 면이 위로 나온 개수로 가는 칸 수가 정해져요. 하나면 도, 둘이면 개, 셋이면 걸, 넷이면 윷, 하나도 없으면 모예요.</li>
+        <li>‘빽’ 표시가 있는 윷가락 하나만 평평한 면이면 빽도, 한 칸 뒤로 가요.</li>
+        <li>윷이나 모가 나오거나 상대 말을 잡으면 한 번 더 던져요.</li>
+        <li>모·뒷모·방에 딱 멈추면 다음엔 지름길로 가요.</li>
+        <li>우리 팀 말끼리 만나면 업고 같이 움직여요. 업힌 말이 잡히면 다 같이 집으로 가요.</li>
+        <li>말을 모두 먼저 들여보내는 팀이 이겨요.</li>
+        <li>잔치 칸: 🎁 선물 상자, 🎴 가족 미션, 🚪 도깨비 문(방으로 순간이동), 🐦 까치 소식(한 번 더), 💧 웅덩이(한 칸 뒤로), 🤝 친구 부르기. 딱 멈췄을 때만 터지고, 한 번 터지면 한 바퀴 쉬어요.</li>
+        <li>키보드: 스페이스 던지기, 1~4 선택지 고르기, ←→ 결과 바꾸기, U 되돌리기.</li>
+      </ul>
+    </details>
+    <p class="credit">버전 <span id="ver"></span> · <a href="https://github.com/" id="repoLink" target="_blank" rel="noopener">소스 코드</a></p>
+  </div>
+</div>
+
+<!-- 가족 미션 -->
+<div class="modal" id="mission" role="dialog" aria-modal="true" aria-labelledby="mText" hidden>
+  <div class="sheet card">
+    <div class="mTeam" id="mTeam"></div>
+    <div class="mIcon" id="mIcon"></div>
+    <h2 id="mText"></h2>
+    <div class="mTimer" id="mTimer" hidden></div>
+    <div class="btns row">
+      <button class="go a" id="mDone">해냈어요! 👏</button>
+      <button class="go b" id="mSkip">다음에 할래요</button>
+    </div>
+  </div>
+</div>
+
+<!-- 시상식 -->
+<div class="modal" id="result" role="dialog" aria-modal="true" aria-labelledby="rTitle" hidden>
+  <div class="sheet">
+    <h2 id="rTitle"></h2>
+    <ol id="rList"></ol>
+    <p class="today" id="today"></p>
+    <div class="btns">
+      <button class="go a" id="againBtn">한 판 더!</button>
+      <button class="go b" id="toSetupBtn">설정 바꾸기</button>
+      <button class="go c" id="rUndo" hidden>마지막 수 되돌리기</button>
+    </div>
+  </div>
+</div>
+
+<div id="boot" class="boot"><div class="spinner" aria-hidden="true"></div><p id="bootMsg">윷판을 펴는 중…</p></div>
+<noscript><p class="nojs">이 게임은 자바스크립트가 필요해요.</p></noscript>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

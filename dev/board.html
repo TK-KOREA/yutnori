@@ -1,0 +1,28 @@
+<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>board</title>
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<style>html,body{margin:0;height:100%}#stage{position:fixed;inset:0}</style>
+<script type="importmap">{"imports":{"three":"../vendor/three/three.module.min.js","three/addons/":"../vendor/three/addons/"}}</script>
+</head><body><div id="stage"></div>
+<script type="module">
+window.onerror = m => { document.title = 'ERR ' + m; };
+import { createScene } from '../js/scene.js';
+import { createBoard } from '../js/board.js';
+import { optionsFor, newTeams } from '../js/rules.js';
+await Promise.race([document.fonts.load('32px "Jua"', '윷'), new Promise(r => setTimeout(r, 1500))]);
+const q = new URLSearchParams(location.search);
+const ctx = createScene(document.getElementById('stage'));
+const board = createBoard(ctx);
+const apply = side => { board.setLayout(side); ctx.setBoxes({ board: board.box(side), mat: { x0: -3.8, x1: 3.8, z0: 6, z1: 9.6, y1: .5 } }); };
+ctx.onLayout(apply); apply(ctx.matSide);
+board.setTeams([{ color: 0 }, { color: 1 }, { color: 2 }, { color: 3 }]);
+board.setParty(true, false);
+ctx.start();
+ctx.setFraming(q.get('framing') || 'board', true);
+if (q.get('demo') === 'choices') {
+  const st = { rules: { backdo: true, finish: 'pass' }, teams: newTeams(2, 4) };
+  st.teams[0].pieces[0].pos = 3; st.teams[0].pieces[0].trail = [2]; st.teams[0].pieces[1].pos = 5; st.teams[0].pieces[1].trail = [4];
+  const opts = optionsFor(st, 0, 2);
+  board.showChoices(opts.map((o, k) => ({ k, label: String(k + 1), dest: o.move.dest, opt: o, tags: [] })), 0);
+}
+setTimeout(() => { document.title = 'READY ' + ctx.renderer.info.render.calls; }, 800);
+</script></body></html>

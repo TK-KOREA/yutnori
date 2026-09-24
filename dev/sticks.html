@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>sticks · dev</title>
+<style>
+  :root { --ink: #2B2118; --paper: #FFF8EC; --line: #E4D3B4; --gold: #E8B23A; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #CFE6F3; font-family: system-ui, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; color: var(--ink); }
+  #stage { position: fixed; inset: 0; touch-action: none; }
+  #stage canvas { display: block; width: 100%; height: 100%; }
+  #ui { position: fixed; left: 8px; right: 8px; top: 8px; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; pointer-events: none; }
+  #ui > * { pointer-events: auto; }
+  #ui button, #ui label { font: 600 13px/1 inherit; font-family: inherit; border: 1.5px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 10px; padding: 7px 9px; cursor: pointer; box-shadow: 0 1px 0 rgba(0,0,0,.08); }
+  #ui button.r { min-width: 40px; font-size: 14px; }
+  #ui button.on, #ui label.on { background: var(--gold); border-color: #C8931E; }
+  #ui .sep { width: 1px; height: 22px; background: rgba(0,0,0,.15); margin: 0 2px; }
+  #ui input[type=range] { width: 80px; vertical-align: middle; }
+  #out { position: fixed; left: 8px; bottom: 8px; background: rgba(255,248,236,.92); border-radius: 12px; padding: 8px 12px; font: 13px/1.45 ui-monospace, Menlo, monospace; white-space: pre; max-width: calc(100% - 40px); overflow: hidden; }
+  #big { position: fixed; left: 0; right: 0; top: 30%; text-align: center; font: 900 64px/1 inherit; font-family: inherit; color: #fff; text-shadow: 0 3px 0 #2B2118, 0 0 18px rgba(0,0,0,.25); pointer-events: none; opacity: 0; transition: opacity .2s; }
+  #big.show { opacity: 1; }
+  body.noui #ui, body.noui #out { display: none; }
+</style>
+<script>
+  // 오류는 제목으로(헤드리스 확인용)
+  window.onerror = (m, s, l) => { document.title = 'ERR ' + m + ' @' + (s || '').split('/').pop() + ':' + l; };
+  window.addEventListener('unhandledrejection', e => { document.title = 'ERR ' + (e.reason && (e.reason.message || e.reason)); });
+  // 콘솔 경고·오류 모으기(?check=1이 0개인지 본다)
+  window.__warns = [];
+  for (const k of ['warn', 'error']) { const o = console[k].bind(console); console[k] = (...a) => { window.__warns.push(k + ': ' + a.join(' ')); o(...a); }; }
+  // ?seed=N: Math.random을 씨앗 난수로(같은 던지기를 여러 시점에서 찍을 때)
+  (() => {
+    let sd = +new URLSearchParams(location.search).get('seed');
+    if (!sd) return;
+    Math.random = () => { let a = (sd = (sd + 0x6D2B79F5) | 0); a = Math.imul(a ^ (a >>> 15), a | 1); a ^= a + Math.imul(a ^ (a >>> 7), a | 61); return ((a ^ (a >>> 14)) >>> 0) / 4294967296; };
+  })();
+  // 시계: ?ts=배율로 빠르게 돌리고, freeze()로 멈춘다(스크린숏용). rAF 시간도 같은 시계를 쓴다.
+  (() => {
+    const ts = +new URLSearchParams(location.search).get('ts') || 1;
+    const real = performance.now.bind(performance);
+    let base = real(), vbase = base, frozen = null;
+    const now = () => (frozen !== null ? frozen : vbase + (real() - base) * ts);
+    Object.defineProperty(performance, 'now', { value: now, configurable: true });
+    // 헤드리스(--virtual-time-budget)에서는 rAF가 가상 시간을 따라가지 않으므로 타이머로 한 프레임씩 돌린다.
+    // 멈춘 뒤(또는 준비가 끝난 뒤)에는 진짜 rAF로 돌아가야 캔버스가 화면(스크린숏)에 올라온다.
+    const realRaf = window.requestAnimationFrame.bind(window);
+    let timer = /Headless/.test(navigator.userAgent);
+    window.requestAnimationFrame = cb => (timer ? setTimeout(() => cb(now()), 16) : realRaf(() => cb(now())));
+    window.__clock = {
+      freeze() { if (frozen === null) frozen = now(); timer = false; },
+      resume() { if (frozen !== null) { vbase = frozen; base = real(); frozen = null; } },
+      present() { timer = false; },
+      ts,
+    };
+  })();
+</script>
+<script type="importmap">{"imports":{"three":"../vendor/three/three.module.min.js","three/addons/":"../vendor/three/addons/"}}</script>
+</head>
+<body>
+<div id="stage"></div>
+<div id="ui"></div>
+<div id="big"></div>
+<div id="out">…</div>
+<script type="module">
+import * as THREE from 'three';
+import { createScene, BS, BT } from '../js/scene.js';
+import { boardBox } from '../js/layout.js';
+import { createYut, STICK_L, STICK_R, STICK_YS } from '../js/sticks.js';
+import { createFx } from '../js/fx.js';
+import { resultFromFlats, flatsFor, RESULT_NAME } from '../js/rules.js';
+import { SPEED } from '../js/anim.js';
+
+const q = new URLSearchParams(location.search);
+const demo = q.get('demo'), check = q.get('check') === '1';
+if (q.get('ui') === '0' || check) document.body.classList.add('noui');
+
+const stage = document.getElementById('stage'), out = document.getElementById('out'), big = document.getElementById('big');
+const ctx = createScene(stage, { tier: q.get('tier') || undefined });
+
+/* 자리 채우기: 마당 바닥과 윷판 자리(진짜 윷판은 board.js) */
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshStandardMaterial({ color: 0xE6D3AC, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; ctx.world.add(ground);
+const board = new THREE.Mesh(new THREE.BoxGeometry(BS, BT, BS), new THREE.MeshStandardMaterial({ color: 0xC99A5B, roughness: 0.7 }));
+board.position.y = BT / 2; board.castShadow = true; board.receiveShadow = true; ctx.world.add(board);
+
+/* 소리 기록 */
+const log = [];
+const sfxLog = [];
+let drumStops = 0;
+function sfx(name, p) {
+  sfxLog.push({ name, p, t: performance.now() });
+  log.push(name + (p ? ' ' + JSON.stringify(p) : ''));
+  while (log.length > 5) log.shift();
+  show();
+  // audio.play처럼 끄기 함수를 돌려준다(북이 취소 때 꺼지는지 본다)
+  return name === 'drumroll' ? () => { drumStops++; log.push('drumroll STOP'); show(); } : undefined;
+}
+
+const fx = createFx(ctx);
+const yut = createYut(ctx, { sfx, fx });   // main.js와 같게: 멍석 바닥 높이는 yut이 fx에 알려 준다
+window.yut = yut; window.fx = fx; window.ctx = ctx;
+
+let forced = q.get('side');
+// ?cam=mat 이면 멍석만 크게(자세히 보기)
+function applyLayout(s) {
+  const m = yut.layout(s);
+  if (q.get('cam') === 'mat') { const c = yut.matCenter(), h = s === 'right' ? { x0: c.x - 2, x1: c.x + 2, z0: c.z - 4, z1: c.z + 4 } : { x0: c.x - 4, x1: c.x + 4, z0: c.z - 2, z1: c.z + 2 }; ctx.setBoxes({ board: { ...h, y1: 0.4 }, mat: { ...h, y1: 0.4 } }); }
+  else ctx.setBoxes({ board: boardBox(s), mat: m });
+}
+ctx.onLayout(s => { if (!forced) applyLayout(s); });
+applyLayout(forced || ctx.matSide);
+ctx.start();
+if (forced) { applyLayout(forced); ctx.resize(true); }
+
+/* 상태 */
+let backdo = q.get('backdo') === '1', gentle = q.get('gentle') === '1', power = q.has('power') ? +q.get('power') : 0.6, last = null;
+yut.setBackdoMark(backdo);
+const rules = () => ({ backdo });
+
+function parseR(v) { if (v === 'nak') return 'nak'; const n = parseInt(v, 10); return [-1, 1, 2, 3, 4, 5].includes(n) ? n : 3; }
+function roll(r) {
+  if (r === 'nak') return { flats: [0, 1, 2, 3].map(() => Math.random() < 0.6), out: Math.floor(Math.random() * 4) };
+  if (r === -1 && !backdo) r = 1;
+  return { flats: flatsFor(r, rules(), Math.random), out: -1 };
+}
+function nameOf(flats, o) { return o >= 0 ? '낙' : RESULT_NAME[resultFromFlats(flats, rules())]; }
+function show() {
+  const s = yut.stats;
+  out.textContent = [
+    `side ${yut.side} · 빽표시 ${backdo ? 'on' : 'off'} · 살살 ${gentle ? 'on' : 'off'} · 힘 ${power.toFixed(2)} · SPEED ${SPEED}`,
+    last ? `마지막: ${last.name}  flats ${last.flats.map(f => (f ? '▭' : '◠')).join('')} out ${last.out}  ${last.ms ? Math.round(last.ms) + 'ms' : '…'}` : '',
+    `계획 ${Math.round(s.ms)}ms · 조마조마 ${s.suspense} · 북 @${s.drumAt} ${s.drumMs}ms · snapErr ${s.snapErr.toFixed(4)} · 겹침 ${(s.clash || 0).toFixed(3)}/${(s.gatherClash || 0).toFixed(3)} · 그리기 ${ctx.renderer.info.render.calls}`,
+    ...log,
+  ].join('\n');
+}
+function flash(text) { big.textContent = text; big.classList.add('show'); clearTimeout(flash.t); flash.t = setTimeout(() => big.classList.remove('show'), 1400); }
+
+async function doThrow(r, extra = {}) {
+  const { flats, out: o } = extra.flats ? extra : roll(r);
+  const res = o >= 0 ? 'nak' : resultFromFlats(flats, rules());
+  const dramatic = res === 4 ? 'yut' : res === 5 ? 'mo' : null;
+  last = { name: nameOf(flats, o), flats, out: o, ms: 0 };
+  show();
+  const t0 = performance.now();
+  const done = await yut.throw({ flats, out: o, power, dramatic, gentle: extra.gentle ?? gentle });
+  if (!done) return false;
+  last.ms = performance.now() - t0;
+  show();
+  flash(last.name + '!');
+  if (dramatic && !check) {   // main.js에 부탁한 값: 윷은 색종이 80개·1.6초, 모는 폭죽
+    const m = yut.matCenter();
+    if (dramatic === 'mo') fx.fireworks({ x: m.x, y: 1.2, z: m.z });
+    else fx.confetti({ x: m.x, y: 0.8, z: m.z }, { count: 80, duration: 1600 });
+  }
+  return true;
+}
+
+/* 버튼 */
+const ui = document.getElementById('ui');
+function btn(label, fn, cls) { const b = document.createElement('button'); b.textContent = label; if (cls) b.className = cls; b.onclick = () => { ctx.poke(); fn(b); }; ui.appendChild(b); return b; }
+function sep() { const d = document.createElement('span'); d.className = 'sep'; ui.appendChild(d); }
+[['빽도', -1], ['도', 1], ['개', 2], ['걸', 3], ['윷', 4], ['모', 5], ['낙', 'nak']].forEach(([n, r]) => btn(n, () => doThrow(r), 'r'));
+sep();
+const bBack = btn('빽 표시', b => { backdo = !backdo; yut.setBackdoMark(backdo); b.classList.toggle('on', backdo); show(); });
+bBack.classList.toggle('on', backdo);
+const bGentle = btn('살살', b => { gentle = !gentle; b.classList.toggle('on', gentle); show(); });
+bGentle.classList.toggle('on', gentle);
+btn('세로/가로', () => { forced = yut.side === 'right' ? 'bottom' : 'right'; applyLayout(forced); ctx.resize(true); show(); });
+btn('정리', () => { const { flats } = roll(3); yut.rest(flats, -1); });
+const pw = document.createElement('label'); pw.innerHTML = '힘 <input type="range" min="0" max="1" step="0.05">';
+const pwIn = pw.querySelector('input'); pwIn.value = power; pwIn.oninput = () => { power = +pwIn.value; show(); };
+ui.appendChild(pw);
+sep();
+const mc = () => { const m = yut.matCenter(); return { x: m.x, y: 0.4, z: m.z }; };
+btn('색종이', () => fx.confetti(mc(), { count: 80, duration: 1600 }));
+btn('폭죽', () => { fx.fireworks({ x: -2, y: 0.4, z: 0 }); setTimeout(() => fx.fireworks({ x: 2.5, y: 0.4, z: -1 }, { colors: [0xE8B23A, 0xE14B2F, 0xFFFFFF] }), 350); });
+btn('비', () => fx.rain());
+btn('반짝', () => fx.sparkle({ x: 4, y: BT + 0.2, z: 4 }));
+btn('지우기', () => fx.clear());
+
+/* 쓸어 던지기(멍석·윷가락 위에서 위로 쓸기) */
+ctx.setFlickZones(yut.flickTargets);
+ctx.onFlick(p => { power = p; pwIn.value = p; const rs = [-1, 1, 2, 2, 3, 3, 4, 5]; doThrow(rs[Math.floor(Math.random() * rs.length)]); }, () => true);
+show();
+
+/* ---------------- 스크린숏용 데모 ---------------- */
+function freezeAfter(ms, then) {
+  const t0 = performance.now();
+  const f = () => { if (performance.now() - t0 >= ms) { ctx.removeTicker(f); window.__clock.freeze(); ctx.invalidate(); then && then(); } return 'active'; };
+  ctx.addTicker(f);
+}
+const ready = () => { window.__clock.present(); setTimeout(() => { if (!document.title.startsWith('ERR')) document.title = 'READY'; }, 300); };
+const R = parseR(q.get('r') || '3');
+
+// ?texdump=1: 0번 가락 배 텍스처를 화면에 크게 띄운다(방향 확인용)
+if (q.get('texdump') === '1') {
+  const im = new Image(); im.src = yut.sticks[0].material.map.image.toDataURL();
+  im.style.cssText = 'position:fixed;right:10px;top:10px;height:90%;border:2px solid #000;z-index:9;image-rendering:pixelated';
+  document.body.appendChild(im);
+}
+async function runDemo() {
+  if (demo === 'rest') { const { flats, out: o } = roll(R); yut.rest(flats, o); last = { name: nameOf(flats, o), flats, out: o }; show(); ready(); }
+  else if (demo === 'mid') { freezeAfter(+(q.get('t') || 430), ready); doThrow(R); }
+  else if (demo === 'result') { await doThrow(R); ready(); }
+  else if (demo === 'confetti') { fx.confetti({ ...mc(), y: 0.8 }, { count: +(q.get('n') || 80), duration: +(q.get('dur') || 1600) }); freezeAfter(+(q.get('t') || 330), ready); }
+  else if (demo === 'fireworks') { fx.fireworks({ x: -1.5, y: 0.4, z: 0 }); fx.fireworks({ x: 2.5, y: 0.4, z: -1.5 }, { colors: [0xE8B23A, 0xE14B2F, 0xFFFFFF] }); freezeAfter(+(q.get('t') || 800), ready); }
+  else if (demo === 'rain') { fx.rain(); freezeAfter(+(q.get('t') || 2600), ready); }
+  else if (demo === 'sparkle') { fx.sparkle({ x: 4, y: BT + 0.2, z: 4 }); fx.sparkle(mc(), { color: 0x6E95FF }); freezeAfter(+(q.get('t') || 280), ready); }
+  else if (!check) ready();
+}
+
+/* ---------------- 자동 점검(?check=1) ----------------
+ * 무작위 결과 n번(기본 30)을 던지고, 멈춘 뒤 각 윷가락 배 면의 월드 위 방향으로 면을 읽어 요청과 같은지 본다.
+ * 연출 길이(보통 ≤2.0초, 윷·모 ≤3.0초), 끝 맞춤 오차, 낙 가락 위치, 중간 취소도 함께 본다.
+ * 매 프레임 자세를 기록해 — 손에 다 모인 뒤 가락끼리 파고들지 않는지(정점이 다른 가락 몸통 안에 있는 깊이),
+ * 조마조마: 나머지 셋이 북보다 늦게 멈추지 않는지(+60ms), 혼자 흔들리는 시간이 400·SPEED ms 넘는지, 그 사이 딸각 소리가 없는지.
+ * 끝에 이상한 입력(power NaN, out '2'·null), 북 끄기, 그리기 수, 콘솔 경고도 본다.
+ */
+const VERTS = [];
+{ const pa = yut.sticks[0].geometry.attributes.position; for (let i = 0; i < pa.count; i++) VERTS.push(new THREE.Vector3().fromBufferAttribute(pa, i)); }
+const SA = STICK_R, SB = STICK_R * STICK_YS;
+const _inv = new THREE.Matrix4(), _rel = new THREE.Matrix4(), _w = new THREE.Vector3();
+/** 한 가락의 정점이 다른 가락 몸통(반타원 막대) 안으로 들어간 가장 깊은 값 */
+function penDepth() {
+  let pen = 0;
+  yut.sticks.forEach(m => m.updateWorldMatrix(true, false));
+  for (let i = 0; i < 4; i++) {
+    _inv.copy(yut.sticks[i].matrixWorld).invert();
+    for (let j = 0; j < 4; j++) {
+      if (i === j) continue;
+      _rel.multiplyMatrices(_inv, yut.sticks[j].matrixWorld);
+      for (const p of VERTS) {
+        _w.copy(p).applyMatrix4(_rel);
+        if (Math.abs(_w.z) > STICK_L / 2 - 0.12 || Math.abs(_w.x) >= SA) continue;
+        const yb = -SB * Math.sqrt(1 - (_w.x / SA) ** 2);
+        if (_w.y < 0 && _w.y > yb) pen = Math.max(pen, Math.min(-_w.y, _w.y - yb, SA - Math.abs(_w.x)));
+      }
+    }
+  }
+  return pen;
+}
+const poseOf = m => ({ x: m.position.x, y: m.position.y, z: m.position.z, r: [m.rotation.x, m.rotation.y, m.rotation.z] });
+/** 가장 낮은 정점의 월드 높이 */
+const lowY = m => { let mn = Infinity; for (const p of VERTS) { _w.copy(p).applyMatrix4(m.matrixWorld); if (_w.y < mn) mn = _w.y; } return mn; };
+let rec = null;
+ctx.addTicker(() => {
+  if (!rec) return undefined;
+  const pen = penDepth();   // (월드 행렬도 여기서 새로 맞춘다)
+  rec.frames.push({ t: performance.now() - rec.t0, s: yut.sticks.map(poseOf), lo: yut.sticks.map(lowY), pen });
+  return 'active';
+});
+/** 가락 i가 끝 자세와 눈에 띄게(0.015 / 0.03rad) 달랐던 마지막 때(ms) */
+function visSettle(R, fin, i) {
+  let lm = 0;
+  for (const f of R.frames) {
+    const a = f.s[i], b = fin[i];
+    const dp = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z), dr = Math.abs(a.r[0] - b.r[0]) + Math.abs(a.r[1] - b.r[1]) + Math.abs(a.r[2] - b.r[2]);
+    if (dp > 0.015 || dr > 0.03) lm = f.t;
+  }
+  return lm;
+}
+const sleepV = ms => new Promise(r => setTimeout(r, ms / window.__clock.ts));
+
+async function runCheck() {
+  const N = +(q.get('n') || 30), fails = [];
+  const up = new THREE.Vector3(), qw = new THREE.Quaternion();
+  const results = [-1, 1, 2, 3, 4, 5, 'nak'];
+  const frameSlack = 40 * window.__clock.ts + 30;
+  const handMs = 170 * SPEED;   // 손에 다 모인 때(TG 0.15초 + 여유)
+  const sum = { tries: 0, planMs: 0, maxN: 0, maxD: 0, drumLo: 1e9, drumHi: 0, sus: 0, nak: 0, solo: [], penFly: 0, penGather: 0, clash: 0, susLast: 0 };
+  for (let n = 0; n < N; n++) {
+    if (n === Math.floor(N / 3) || n === Math.floor(2 * N / 3)) { forced = n === Math.floor(N / 3) ? 'right' : 'bottom'; applyLayout(forced); ctx.resize(true); }
+    backdo = Math.random() < 0.7; yut.setBackdoMark(backdo);
+    const r = results[n % results.length === 0 ? 0 : Math.floor(Math.random() * results.length)];
+    const g = n % 6 === 5;
+    power = Math.random();
+    if (n === 15) {   // 중간 취소: 앞 던지기는 false로 끝나야 한다
+      const first = yut.throw({ ...roll(5), power: 1, dramatic: 'mo' });
+      await sleepV(300);
+      const second = doThrow(3);
+      if (await first !== false) fails.push(`#${n} cancelled throw did not resolve false`);
+      await second;
+    } else {
+      const { flats, out: o } = roll(r);
+      const t0 = performance.now();
+      rec = { t0, frames: [] };
+      const done = await doThrow(r, { flats, out: o, gentle: g });
+      const R = rec; rec = null;
+      const el = performance.now() - t0;
+      if (!done) { fails.push(`#${n} not done`); continue; }
+      const res = o >= 0 ? 'nak' : resultFromFlats(flats, rules());
+      const tag = `#${n} ${yut.side} ${last.name}${g ? '(살살)' : ''}`;
+      const limit = (g ? 800 : (res === 4 || res === 5) ? 3000 : 2000) * SPEED;
+      if (yut.stats.ms > limit) fails.push(`${tag} planned ${Math.round(yut.stats.ms)}ms > ${limit}`);
+      if (el > yut.stats.ms + frameSlack) fails.push(`${tag} took ${Math.round(el)}ms (planned ${Math.round(yut.stats.ms)})`);
+      if (yut.stats.snapErr > 0.02) fails.push(`${tag} snapErr ${yut.stats.snapErr.toFixed(4)}`);
+      yut.sticks.forEach((m, i) => {
+        m.updateWorldMatrix(true, false);
+        m.getWorldQuaternion(qw); up.set(0, 1, 0).applyQuaternion(qw);
+        const seen = up.y > 0;
+        if (Math.abs(up.y) < 0.999) fails.push(`${tag} stick ${i} not lying flat (up.y ${up.y.toFixed(3)})`);
+        if (seen !== flats[i]) fails.push(`${tag} stick ${i} face ${seen ? 'flat' : 'round'} ≠ ${flats[i] ? 'flat' : 'round'}`);
+        const p = m.getWorldPosition(new THREE.Vector3());
+        if (i === o ? p.y > 0.35 : p.y < 0.07) fails.push(`${tag} stick ${i} height ${p.y.toFixed(3)} (out ${o})`);
+      });
+      const seenFlats = yut.sticks.map(m => { m.getWorldQuaternion(qw); return up.set(0, 1, 0).applyQuaternion(qw).y > 0; });
+      if (o < 0 && resultFromFlats(seenFlats, rules()) !== res) fails.push(`${tag} result ${resultFromFlats(seenFlats, rules())} ≠ ${res}`);
+      // 파고듦: 손에 다 모인 뒤로는 없어야 한다(살살도). 모으는 0.15초는 따로 적기만
+      const penFly = Math.max(0, ...R.frames.filter(f => f.t > handMs).map(f => f.pen));
+      const penGather = Math.max(0, ...R.frames.filter(f => f.t <= handMs).map(f => f.pen));
+      sum.penGather = Math.max(sum.penGather, penGather);
+      if (penGather > 0.02) (sum.gatherBad = sum.gatherBad || []).push(`${tag} out ${o} prevOut ${sum.prevOut} gather ${penGather.toFixed(3)} @${Math.round(R.frames.find(f => f.pen === penGather).t)}`);
+      sum.prevOut = o;
+      sum.penFly = Math.max(sum.penFly, penFly);
+      if (!g) { sum.tries = Math.max(sum.tries, yut.stats.tries || 0); sum.planMs = Math.max(sum.planMs, yut.stats.planMs || 0); sum.clash = Math.max(sum.clash, yut.stats.clash || 0); }
+      if (penFly > 0.01) fails.push(`${tag} sticks overlap ${penFly.toFixed(3)} @${Math.round(R.frames.find(f => f.t > handMs && f.pen === penFly).t)}ms plan ${JSON.stringify(yut.stats.clashAt)} ${yut.stats.clash.toFixed(3)} sus ${yut.stats.suspense} out ${o}`);
+      const sus = yut.stats.suspense;
+      const drumEv = sfxLog.find(e => e.name === 'drumroll' && e.t >= t0);
+      if (!g && o < 0 && res !== 'nak' && !drumEv && sus >= 0) fails.push(`${tag} no drumroll`);
+      if (!g && sus >= 0 && drumEv) {
+        sum.sus++; sum.drumLo = Math.min(sum.drumLo, yut.stats.drumMs); sum.drumHi = Math.max(sum.drumHi, yut.stats.drumMs);
+        const fin = yut.sticks.map(poseOf);
+        const drumStart = drumEv.t - t0, drumMs = drumEv.p.ms;
+        const others = [0, 1, 2, 3].filter(i => i !== sus).map(i => visSettle(R, fin, i));
+        const still = Math.max(...others), solo = drumStart + drumMs - still;
+        sum.solo.push(Math.round(solo));
+        if (still > drumStart + 60) fails.push(`${tag} others still moving ${Math.round(still - drumStart)}ms after drum start`);
+        if (solo < 400 * SPEED) fails.push(`${tag} solo ${Math.round(solo)}ms < ${400 * SPEED}`);
+        const clack = sfxLog.find(e => e.name === 'stickLand' && e.t - t0 > drumStart + 5 && e.t - t0 < drumStart + drumMs - 5);
+        if (clack) fails.push(`${tag} clack during solo @${Math.round(clack.t - t0)}ms`);
+        // 조마조마 가락이 마지막으로 처음 닿고(계획), 마지막으로 내려앉는가(마지막 착지 = 북 시작)
+        const tl = yut.stats.timeline, oth = [0, 1, 2, 3].filter(i => i !== sus);
+        if (tl[sus].first > Math.max(...oth.map(i => tl[i].first))) sum.susLast++;
+        else fails.push(`${tag} suspense first impact ${tl[sus].first} not after others ${oth.map(i => tl[i].first)}`);
+        if (tl[sus].last < Math.max(...oth.map(i => tl[i].last))) fails.push(`${tag} suspense lands before another stick's last bounce`);
+      }
+      if (o >= 0) sum.nak++;
+      if (!g) { if (res === 4 || res === 5) sum.maxD = Math.max(sum.maxD, yut.stats.ms); else sum.maxN = Math.max(sum.maxN, yut.stats.ms); }
+      if (!g && sus >= 0 && (yut.stats.drumMs < 400 * SPEED - 1 || yut.stats.drumMs > 700 * SPEED / (res === 4 || res === 5 ? 0.35 : 1) + 1)) fails.push(`${tag} drum ${yut.stats.drumMs}ms`);
+    }
+    document.title = `RUN ${n + 1}/${N}`;
+  }
+
+  // 이상한 입력: 힘이 숫자가 아니어도 끝나야 하고, out은 문자 '2'도 받는다
+  const race = (p, ms) => Promise.race([p, sleepV(ms).then(() => 'HUNG')]);
+  forced = 'bottom'; applyLayout(forced); ctx.resize(true);
+  const rNaN = await race(yut.throw({ flats: [true, false, true, false], power: NaN }), 5000);
+  if (rNaN !== true) fails.push(`power NaN → ${rNaN}`);
+  const rObj = await race(yut.throw({ flats: [true, false, true, false], power: {} }), 5000);
+  if (rObj !== true) fails.push(`power {} → ${rObj}`);
+  await yut.throw({ flats: [true, false, true, false], out: '2' });
+  // 낙 가락은 멍석 긴 변 끝 바깥(local |x| > 멍석 반 길이)
+  const outs = () => yut.sticks.map(m => Math.abs(m.position.x) > 3.8);
+  if (outs().join() !== 'false,false,true,false') fails.push(`out '2' → out ${outs().join('/')}`);
+  await yut.throw({ flats: [true, false, true, false], out: null });
+  if (outs().some(Boolean)) fails.push('out null → a stick went out');
+  // 북 끄기: 북이 울린 뒤 정리하면 끄기 함수가 한 번 불려야 한다
+  {
+    const stops0 = drumStops, t0 = performance.now();
+    const p = yut.throw({ flats: [true, true, true, false], power: 0.5 });
+    for (let k = 0; k < 150 && !sfxLog.some(e => e.name === 'drumroll' && e.t >= t0); k++) await sleepV(20);
+    const heard = sfxLog.some(e => e.name === 'drumroll' && e.t >= t0);
+    await sleepV(80);
+    yut.rest([true, true, true, false]);
+    const res = await p;
+    if (!heard) fails.push('drum stop: no drumroll heard');
+    if (res !== false) fails.push(`drum stop: cancelled throw → ${res}`);
+    if (drumStops - stops0 !== 1) fails.push(`drum stop called ${drumStops - stops0}×`);
+  }
+  // 그리기 수: 멍석+윷가락(그림자 포함)
+  const rig = yut.sticks[0].parent;
+  ctx.renderer.render(ctx.scene, ctx.camera); const withRig = ctx.renderer.info.render.calls;
+  rig.visible = false; ctx.renderer.render(ctx.scene, ctx.camera); const noRig = ctx.renderer.info.render.calls; rig.visible = true;
+  const calls = withRig - noRig;
+  if (calls > 12) fails.push(`draw calls ${calls} > 12`);
+  if (window.__warns.length) fails.push(...window.__warns.slice(0, 3));
+
+  window.__check = fails;
+  const solo = sum.solo.slice().sort((a, b) => a - b);
+  const info = `max ${Math.round(sum.maxN)}ms/${Math.round(sum.maxD)}ms drum ${sum.drumLo}-${sum.drumHi}ms (${sum.sus}) solo ${solo[0]}/${solo[solo.length >> 1]}ms susLast ${sum.susLast}/${sum.sus} pen ${sum.penFly.toFixed(3)} gather ${sum.penGather.toFixed(3)} clash ${sum.clash.toFixed(3)} tries≤${sum.tries} plan≤${sum.planMs}ms nak ${sum.nak} calls ${calls}`;
+  window.__info = info;
+  out.textContent = (fails.length ? fails.join('\n') : 'all good') + '\n' + info + '\n' + (sum.gatherBad || []).join('\n');
+  document.body.classList.remove('noui');
+  document.title = fails.length ? `FAIL ${fails.length}: ${fails[0]} | ${info}` : `PASS ${N}/${N} ${info}`;
+}
+
+if (check) runCheck(); else runDemo();
+</script>
+</body>
+</html>

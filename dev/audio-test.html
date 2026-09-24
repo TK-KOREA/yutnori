@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>RUNNING</title>
+<link rel="icon" href="../icons/icon.svg">
+<style>
+body{font:15px/1.5 ui-monospace,Menlo,monospace;margin:16px;background:#fbf7ee;color:#2b2118}
+.pass{color:#1f7a3f}.fail{color:#b3261e}
+pre{white-space:pre-wrap}
+</style>
+<script>
+// 모듈을 읽다가 난 오류도 제목에 보이도록, 모듈보다 먼저 건다
+window.onerror = m => { document.title = 'ERR ' + m; };
+window.addEventListener('unhandledrejection', e => { document.title = 'ERR ' + ((e.reason && e.reason.message) || e.reason); });
+</script>
+</head>
+<body>
+<h1>소리 테스트</h1>
+<pre id="out">실행 중…</pre>
+<script type="module">
+import { run } from '../tests/harness.js';
+import '../tests/audio.test.js';
+const t0 = performance.now();
+await run();
+document.title += ' ' + Math.round(performance.now() - t0) + 'ms';
+</script>
+</body>
+</html>
