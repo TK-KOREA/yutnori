@@ -1,5 +1,5 @@
 // 오프라인 설치용 서비스워커. tools/stamp.py가 VERSION과 SHELL을 채운다.
-const VERSION = '8c92461b190b';
+const VERSION = 'e2f341dbb113';
 const SHELL = [
   './',
   './css/app.css',
@@ -56,8 +56,9 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.includes('/tests/') || url.pathname.includes('/dev/')) return;
-  // 페이지 이동은 캐시의 index.html
+  // 게임 화면으로 오는 페이지 이동만 캐시의 index.html. privacy.html 같은 다른 페이지는 그대로 네트워크
   if (req.mode === 'navigate') {
+    if (!/\/(index\.html)?$/.test(url.pathname)) return;
     e.respondWith(caches.match('./index.html', { ignoreSearch: true }).then(hit => hit || fetch(req)).catch(() => fetch(req)));
     return;
   }
