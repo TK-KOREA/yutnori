@@ -128,7 +128,7 @@
         <li>키보드: 스페이스 던지기, 1~4 선택지 고르기, ←→ 결과 바꾸기, U 되돌리기.</li>
       </ul>
     </details>
-    <p class="credit">버전 <span id="ver"></span> · <a href="https://github.com/TK-KOREA/yutnori" id="repoLink" target="_blank" rel="noopener">소스 코드</a></p>
+    <p class="credit">버전 <span id="ver"></span></p>
   </div>
 </div>
 
@@ -156,6 +156,18 @@
       <button class="go a" id="againBtn">한 판 더!</button>
       <button class="go b" id="toSetupBtn">설정 바꾸기</button>
       <button class="go c" id="rUndo" hidden>마지막 수 되돌리기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 안드로이드 뒤로 가기: 그만할지 묻기(앱에서만 열림) -->
+<div class="modal" id="quit" role="alertdialog" aria-modal="true" aria-labelledby="qText" hidden>
+  <div class="sheet card">
+    <h2 id="qText">윷놀이를 그만할까요?</h2>
+    <p class="qSave" id="qSave">하던 경기는 저장돼서 다음에 이어서 할 수 있어요.</p>
+    <div class="btns row">
+      <button class="go a" id="qStay">계속할래요</button>
+      <button class="go b" id="qExit">그만할래요</button>
     </div>
   </div>
 </div>

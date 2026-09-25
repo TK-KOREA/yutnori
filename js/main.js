@@ -12,6 +12,8 @@ import { RESULT_NAME, STEP_WORD, BACKDO, FIN, HOME, DONE, CORNER, optionsFor } f
 import { TEAM_COLORS, RESULT_SPECIES, speciesById } from './theme.js';
 import { TILES } from './party.js';
 import { wait } from './anim.js';
+import { nativeSpeech, onBackButton, exitApp } from './native.js';
+import { initAds, bannerOnScreens, gameFinished, beforeNewGame } from './ads.js';
 
 export const VERSION = '1.0.0';
 const $ = s => document.querySelector(s);
@@ -49,7 +51,8 @@ async function boot() {
   const stage = $('#stage');
   const ctx = createScene(stage);
   const audio = createAudio();
-  const voice = createVoice({ onSpeaking: on => audio.duck(on) });
+  // 안드로이드 앱에서는 기기 TTS로 읽는다(WebView에 speechSynthesis가 없음). 웹에서는 브라우저 목소리
+  const voice = createVoice({ ...nativeSpeech(), onSpeaking: on => audio.duck(on) });
   const sfx = (name, params) => (prefs.sfx ? audio.play(name, params) : undefined);
   const fx = createFx(ctx);
   const board = createBoard(ctx);
@@ -329,6 +332,7 @@ async function boot() {
       say(`${teamName(w)} 우승! 축하해요!`, 'high');
       store.del(KEY.save);
       releaseWakeLock();
+      gameFinished();
       const today = recordToday(teamName(w));
       await wait(2200);
       if (G !== G2) return;
@@ -432,12 +436,32 @@ async function boot() {
     if (apply && G && G.phase !== 'over') { pieces.setSpeed(settings.speed === 'fast' ? 0.6 : 1); game.applyLive(toGameSettings(settings)); }
     game.pause(false);
   }
-  function startGame() {
+  let starting = false;
+  async function startGame() {
+    if (starting) return;   // 광고를 기다리는 동안 두 번 눌러도 한 판만
+    starting = true;
+    try { await beforeNewGame(); } finally { starting = false; }
     store.set(KEY.settings, settings);
     closeSetup(false);
     const seed = (crypto.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 2 ** 31)) | 0;
     game.newGame(toGameSettings(settings), seed);
   }
+  /* ---------- 안드로이드 뒤로 가기: 바로 닫지 않는다(아이가 실수로 나가지 않게) ---------- */
+  let quitPaused = false;
+  function hideQuit() { $('#quit').hidden = true; if (quitPaused) game.pause(false); quitPaused = false; }
+  onBackButton(() => {
+    if (!$('#quit').hidden) { hideQuit(); return; }
+    // 경기 중에 연 설정 창이면 경기로 돌아가기만
+    if (!$('#setup').hidden && G && G.phase !== 'over') { closeSetup(); return; }
+    quitPaused = $('#setup').hidden && $('#mission').hidden;   // 설정 창이 이미 멈춰 두었으면 건드리지 않는다
+    if (quitPaused) game.pause(true);
+    $('#qSave').hidden = !(G && G.phase !== 'over');
+    $('#quit').hidden = false;
+    $('#qStay').focus({ preventScroll: true });
+  });
+  $('#qStay').addEventListener('click', hideQuit);
+  $('#qExit').addEventListener('click', () => exitApp());
+
   $('#setup').addEventListener('click', e => { if (e.target === e.currentTarget && G && G.phase !== 'over') closeSetup(); });
   $('#setupClose').addEventListener('click', () => { if (G && G.phase !== 'over') closeSetup(); });
 
@@ -581,13 +605,11 @@ async function boot() {
 
   /* ---------- 시작 ---------- */
   $('#ver').textContent = VERSION;
-  { // 소스 코드 링크: github.io 주소에서 저장소 주소를 알아낸다
-    const m = location.hostname.match(/^([^.]+)\.github\.io$/), repo = location.pathname.split('/')[1];
-    const a = $('#repoLink');
-    if (m && repo) a.href = `https://github.com/${m[1]}/${repo}`;
-  }
   updateSoundIcon();
   applyPrefs();
+  // 광고(앱에서만): 설정·결과 창이 열려 있을 때만 아래쪽 배너
+  initAds();
+  bannerOnScreens(['setup', 'result']);
   const boot = $('#boot');
   boot.classList.add('hide');
   setTimeout(() => boot.remove(), 600);

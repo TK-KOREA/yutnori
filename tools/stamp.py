@@ -9,10 +9,10 @@ PATTERNS = ['index.html', 'manifest.webmanifest', 'css/*.css', 'js/*.js',
 files = sorted({p for pat in PATTERNS for p in ROOT.glob(pat)})
 h = hashlib.sha256()
 for p in files:
-    h.update(str(p.relative_to(ROOT)).encode())
+    h.update(p.relative_to(ROOT).as_posix().encode())   # 윈도에서도 / 경로(같은 해시, 정규식 치환 오류 없음)
     h.update(p.read_bytes())
 version = h.hexdigest()[:12]
-shell = ['./'] + ['./' + str(p.relative_to(ROOT)) for p in files]
+shell = ['./'] + ['./' + p.relative_to(ROOT).as_posix() for p in files]
 
 sw = ROOT / 'sw.js'
 src = sw.read_text(encoding='utf-8')

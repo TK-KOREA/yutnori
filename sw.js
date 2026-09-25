@@ -1,5 +1,5 @@
 // 오프라인 설치용 서비스워커. tools/stamp.py가 VERSION과 SHELL을 채운다.
-const VERSION = '2aae16bf71b0';
+const VERSION = '8c92461b190b';
 const SHELL = [
   './',
   './css/app.css',
@@ -12,6 +12,7 @@ const SHELL = [
   './icons/icon-maskable.svg',
   './icons/icon.svg',
   './index.html',
+  './js/ads.js',
   './js/ai.js',
   './js/anim.js',
   './js/audio.js',
@@ -21,6 +22,7 @@ const SHELL = [
   './js/game.js',
   './js/layout.js',
   './js/main.js',
+  './js/native.js',
   './js/party.js',
   './js/rules.js',
   './js/scene.js',
